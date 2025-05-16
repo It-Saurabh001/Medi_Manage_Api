@@ -1,0 +1,54 @@
+
+
+cursor is used to perform all the task so that all the operation done in database 
+it is used here coz we cannot assign operation to database directly
+cursor is act as manager of the database 
+
+Just like in store , if we have to  access store then we call sotremanager who mangaes the data in the  database
+
+
+
+Table->
+
+a database can contain multiple tables 
+
+
+DataBase->
+            sqlite table ko seen krne ke liye sqlite viewer ka use krte hai 
+        create table function mai ->
+            first : connect with sqlite using a variable 
+            2nd : variable ke sath connect ka use krege named cursor who do maintain database and manage all the  operations 
+            3rd: assign execute operation to cursor and create table if not exist 
+            4th : deifne table by using query and define all the columns of the table 
+            5th : database ko commit krege
+            6th : database ko close krege 
+
+    Note-> when do database open , need to close at last for not further changes
+
+
+Run of table ->
+    createtable function ko main file mai import krenge 
+
+    
+if __name__ == '__main__':         
+    
+    createTable()
+    app.run(debug=True)  
+
+yha par cratetable function ko run krege 
+
+
+in createTable uuid is an unique key generated automatically and will be same for both user and admin 
+
+use try catch for error handling 
+
+user se related saare api ko ek module User mai create krege 
+
+these are the steps to be followed for user 
+
+->signup
+->login     (check is there is any user present in the database of email and password )
+->single user fetch        [Done]
+->all user fetch           [working]
+->update user 
+->delete user
