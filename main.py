@@ -1,5 +1,5 @@
 from flask import Flask,jsonify,request,render_template
-from createTableOperation import createTable,update_table
+from createTableOperation import createTable
 from addOperation import createUser,addProduct,createOrder,record_Sell,addAvailableProduct
 from auth_user import authenticate_user
 from updateOperation import update_approve_user,add_api_key_column,update_user_details,update_product,update_Order,approve_Order,updateAvailableproduct
@@ -382,7 +382,6 @@ def update_available_product():
 if __name__ == '__main__':
 
     createTable()
-    # update_table()
 
     app.run(debug=True)  
 

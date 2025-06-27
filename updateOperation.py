@@ -10,8 +10,6 @@ def update_approve_user(userId, approve):
 
     conn.commit()
     conn.close()
-    
-import sqlite3
 
 def add_api_key_column():
     try:
