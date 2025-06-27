@@ -12,7 +12,7 @@ def getAllUsers():
     for user in users:                  # this loop is used to assign specific key to the values 
         tempUser = {
             "id": user[0],
-            "user_id":user[1],
+             "user_id":user[1],
             "password": user[2],
             "date_of_account_creation": user[3],
             "isApproved": user[4],
@@ -23,11 +23,8 @@ def getAllUsers():
             "phone_number": user[9],
             "pin_code":user[10]
         }
-        userJson.append(tempUser)
-
-    
+        userJson.append(tempUser)    
     conn.close()    
-    
     return userJson               # no change in database thus no use of commit 
 
 
@@ -51,10 +48,7 @@ def getSpecificUser(userId):
             "email":user[8],
             "phone_number": user[9],
             "pin_code":user[10]
-        }   
-                   
-   
-    
+        }  
     return tempUser
 
 def getAllProducts():
@@ -155,6 +149,34 @@ def getUserOrders(user_id):
         }
         orderJson.append(tempOrder)
     return orderJson
+
+def getOrderById(Order_id):
+    conn = sqlite3.connect("My_Medical_Shope.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM Order_Details WHERE Order_id = ?",(Order_id,))       # after userId use , "comma" so that it can understand as tuple
+    order = cursor.fetchone()
+    conn.close()
+
+    if order is None:
+        return None
+
+    tempOrder = {
+        "id": order[0],
+        "order_id":order[1],
+        "user_id": order[2],
+        "product_id": order[3],
+        "isApproved": bool(order[4]),
+        "quantity": order[5],
+        "date_of_order_creation": order[6],
+        "price": order[7],
+        "total_amount": order[8],
+        "product_name": order[9],
+        "user_name": order[10],
+        "message": order[11],
+        "category": order[12]
+    }
+    
+    return tempOrder
        
         
 

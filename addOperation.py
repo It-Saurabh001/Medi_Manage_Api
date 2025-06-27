@@ -1,5 +1,5 @@
 import sqlite3              # import sqlite3 to connect with database
-import uuid
+import uuid, secrets
 from datetime import date
 from flask import Flask, jsonify
 
@@ -15,9 +15,9 @@ def createUser( name, password, phoneNumber, email, pincode, address):
         date_of_Account_creation = date.today()     ## to assign date of creation
         cursor.execute('''
 
-INSERT INTO Users(user_id, password ,date_of_account_creation ,isApproved ,block ,name,address ,email ,phone_number ,pin_code) VALUES(?,?,?,?,?,?,?,?,?,?)
+INSERT INTO Users_New(user_id, password ,date_of_account_creation ,isApproved , block , name, address , email , phone_number ,pin_code) VALUES(?,?,?,?,?,?,?,?,?,?)
 
-''', (user_id, password, date_of_Account_creation, 0, 0,name, address, email,phoneNumber,pincode))
+''', (user_id, password, date_of_Account_creation, False, False, name, address, email,phoneNumber,pincode))
 
 
 

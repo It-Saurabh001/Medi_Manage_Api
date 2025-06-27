@@ -1,7 +1,13 @@
 import sqlite3
 
 
+def update_table():
+    conn = sqlite3.connect("My_Medical_Shope.db")          # connecting sqlite with database and automatically create "My_Medical_Shope.db" database
+    cursor = conn.cursor()                     # cursor is used to assign operation to database
 
+    cursor.execute('DROP TABLE IF EXISTS Users_New')  #
+    conn.commit()           # it show now table is deleted 
+    conn.close()            # after deletion of table sqlite get closed
 
 
 def createTable():                  #function for creation of table 
@@ -9,6 +15,21 @@ def createTable():                  #function for creation of table
     conn = sqlite3.connect("My_Medical_Shope.db")          # conneting sqlite with database and automatically create  "My_Medical_Shope.db" database
     cursor = conn.cursor()                     # cursor is used to assign operation to database
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS Users_New (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id VARCHAR(255) UNIQUE,
+        password VARCHAR(255),
+        date_of_account_creation DATE,
+        isApproved BOOLEAN,
+        block BOOLEAN,
+        name VARCHAR(255),
+        address VARCHAR(255),
+        email VARCHAR(255) UNIQUE,
+        phone_number VARCHAR(255) UNIQUE,
+        pin_code VARCHAR(255)
+    )
+''')  
 
     #User table creation 
     cursor.execute('''
@@ -27,9 +48,8 @@ CREATE TABLE IF NOT EXISTS Users(
                     pin_code VARCHAR(255)
 
                    )
-''')                            # user id ko uuid se generate krege jo ki sbke liye unique hoti hai 
-    
-    
+''')                          # user id ko uuid se generate krege jo ki sbke liye unique hoti hai
+
     # multiple table create kr rhe hai jisse ek baar function  call krege table create ho jayegi
 
     # Products table creation
