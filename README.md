@@ -98,10 +98,6 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 - `GET /getSellHistory` - Fetch all sales history
 - `POST /getusersellhistory` - Fetch sales history for a user
 - `POST /getproductsellhistory` - Fetch sales history for a product
-- `POST /addavailableproducts` - Add available stock
-- `GET /getAvailableProducts` - Fetch all available products
-- `POST /getavailableproductbycategory` - Fetch available products by category
-- `PATCH /updateavailableproduct` - Update available product details
 
 ### Utility
 - `GET /addApiKeyColumn` - Add API key column to users table (one-time setup)
@@ -115,7 +111,6 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 - `Users`: Stores user information, approval status, API key
 - `Products`: Stores product details
 - `Orders`: Stores order details, links to users and products
-- `AvailableProducts`: Inventory table with stock info
 - `SellHistory`: Tracks sales by user and product
 
 **Operations:**
