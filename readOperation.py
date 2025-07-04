@@ -15,8 +15,8 @@ def getAllUsers():
              "user_id":user[1],
             "password": user[2],
             "date_of_account_creation": user[3],
-            "isApproved": user[4],
-            "block": user[5],
+            "isApproved": bool(user[4]) if isinstance(user[4], int) else user[4] == "true",
+            "block": bool(user[5]) if isinstance(user[5], int) else user[5] == "true",
             "name": user[6],
             "address": user[7],
             "email":user[8],
@@ -263,49 +263,4 @@ def getProductSellHistory(Product_id):
         sellJson.append(tempSell)
     return sellJson
         
-def get_Available_Products():
-
-    conn = sqlite3.connect("My_Medical_Shope.db")
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM Available_product')
-    available_products = cursor.fetchall()
-    conn.close()
-
-    availableJson = []
-    for available in available_products:
-        tempAvailable = {
-            "id": available[0],
-            "product_id":available[1],
-            "product_name": available[2],
-            "category": available[3],
-            "price": available[4],
-            "Remaining_stock": available[5],
-            "user_id": available[6],
-            "user_name": available[7]
-        }
-        availableJson.append(tempAvailable)
-    return availableJson               # no change in database thus no use of commit
-
-def getAvailableProductByCategory(category):
-
-    conn = sqlite3.connect("My_Medical_Shope.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM Available_product WHERE category = ?",(category,))       # after userId use , "comma" so that it can understand as tuple
-    available_products = cursor.fetchall()
-    conn.close()
-
-    availableJson = []
-    for available in available_products:
-        tempAvailable = {
-            "id": available[0],
-            "product_id":available[1],
-            "product_name": available[2],
-            "category": available[3],
-            "price": available[4],
-            "Remaining_stock": available[5],
-            "user_id": available[6],
-            "user_name": available[7]
-        }
-        availableJson.append(tempAvailable)
-    return availableJson               # no change in database thus no use of commit
 

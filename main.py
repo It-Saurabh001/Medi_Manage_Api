@@ -1,9 +1,9 @@
 from flask import Flask,jsonify,request,render_template
-from createTableOperation import createTable
-from addOperation import createUser,addProduct,createOrder,record_Sell,addAvailableProduct
+from createTableOperation import createTable,update_table
+from addOperation import createUser,addProduct,createOrder,record_Sell
 from auth_user import authenticate_user
-from updateOperation import update_approve_user,add_api_key_column,update_user_details,update_product,update_Order,approve_Order,updateAvailableproduct
-from readOperation import getAllUsers,getOrderById,getSpecificUser,getAllProducts,getspecificproduct,getAllOrders,getUserOrders,getSellHistory,getUserSellHistory,getProductSellHistory,get_Available_Products,getAvailableProductByCategory
+from updateOperation import update_approve_user,add_api_key_column,update_user_details,update_product,update_Order,approve_Order
+from readOperation import getAllUsers,getOrderById,getSpecificUser,getAllProducts,getspecificproduct,getAllOrders,getUserOrders,getSellHistory,getUserSellHistory,getProductSellHistory
 from deleteOperation import delete_User,delete_Product,delete_Order
 
 
@@ -63,7 +63,6 @@ def login_user():
     try:
         email = request.form['email']           # requesting email from user
         password = request.form['password']     # requesting password from user
-
         user = authenticate_user(email=email, password=password)                   # for login email and password is necessary  
         if user:
             return jsonify({'status':200 ,'message':  str(user[1])})
@@ -74,6 +73,7 @@ def login_user():
 
 
 @app.route('/getAllUsers', methods = ['GET'])           # GET method is used so that admin fetch all users 
+# @jwt_required
 def get_All_Users():
     try:
         users = getAllUsers()  # this will return dictonaries of users 
@@ -83,7 +83,8 @@ def get_All_Users():
         return jsonify({'users':[],'message': str(error), 'status': 400})
 
 
-@app.route('/getSpecificUser',methods=['POST'])           
+@app.route('/getSpecificUser',methods=['POST'])  
+# @jwt_required         
 def get_Specific_User():
     try:
         userId = request.form['user_id']
@@ -153,6 +154,7 @@ def add_product():
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
 
+#admin & user
 @app.route('/getAppProducts', methods = ['GET'])
 def get_all_products():
     try: 
@@ -162,6 +164,7 @@ def get_all_products():
     except Exception as error:
         return jsonify({'products':[],"message": str(error), 'status': 400})
 
+#user & admin
 @app.route('/getSpecificProduct', methods = ['POST'])
 def get_specific_product():
     try:
@@ -171,8 +174,8 @@ def get_specific_product():
     
     except Exception as error:
         return jsonify({'product':[],"message": str(error), 'status': 400})
-
-@app.route('/updateProduct', methods = ['PATCH'])
+#admin
+@app.route('/updateProduct', methods = ['PATCH'])    # isme mai hi available product manage krna hai no need of new product table
 def update__product():
     try:
         Product_id = request.form['Product_id']  # taking product id from use 
@@ -184,7 +187,7 @@ def update__product():
         return response     
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
-
+#admin
 @app.route('/deleteProduct', methods = ['POST'])
 def delete_product():
     try:
@@ -197,7 +200,7 @@ def delete_product():
 
 
 # Order table operation
-
+#user
 @app.route('/createOrder', methods=['POST'])
 def create_order():
     try:
@@ -211,7 +214,7 @@ def create_order():
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})  
 
-
+#admin
 @app.route('/getAllOrders', methods=['GET'])
 def get_all_orders():
     try:
@@ -221,7 +224,7 @@ def get_all_orders():
     
     except Exception as error:
         return jsonify({"orders":[],"message": str(error), 'status': 400})
-    
+#admin & user
 @app.route('/getUserOrders', methods=['POST'])
 def get_user_orders():
     try:
@@ -230,8 +233,8 @@ def get_user_orders():
         return jsonify({'order': order, 'message': "Order fetched Successfully", 'status': 200})  # here we are returning the users in json format
     except Exception as error:
         return jsonify({"order":[],"message": str(error), 'status': 400})
-
-@app.route('/getOrderById', methods=['POST'])
+#admin & user
+@app.route('/orderById', methods=['POST'])
 def get_order_by_id():
     try:
         Order_id = request.form['Order_id']  # taking order id from user
@@ -240,7 +243,7 @@ def get_order_by_id():
     
     except Exception as error:
         return jsonify({"order":[],"message": str(error), 'status': 400})
-
+#admin
 @app.route('/updateOrder', methods=['PATCH'])
 def update_order():
     try:
@@ -254,7 +257,7 @@ def update_order():
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
 
-
+#admin
 @app.route('/approveOrder', methods=['PATCH'])
 def approve_order():
     try:
@@ -284,20 +287,38 @@ def delete_order():
 # price 
 # stock 
 
-
-# sell history table 
+#call this route as soon as order placed
+# sell history table creation admin
 @app.route('/recordSell', methods=['POST'])
 def record_sell():
     try:
-        Product_id = request.form['Product_id']  # taking product id from user
-        quantity = int(request.form['quantity'])  # taking quantity from user   
-        user_id = request.form['user_id']  # taking user id from user
-        response = record_Sell(Product_id=Product_id, quantity=quantity, user_id=user_id)  # function to record sell in database
+        # Support both form and JSON input
+        if request.is_json:
+            data = request.get_json()
+            Product_id = data.get('Product_id')
+            quantity = data.get('quantity')
+            user_id = data.get('user_id')
+        else:
+            Product_id = request.form.get('Product_id')
+            quantity = request.form.get('quantity')
+            user_id = request.form.get('user_id')
+
+        # Check for missing fields
+        if not all([Product_id, quantity, user_id]):
+            return jsonify({"message": "Missing required fields", "status": 400})
+
+        # Validate quantity
+        try:
+            quantity = int(quantity)
+        except ValueError:
+            return jsonify({"message": "Quantity must be an integer", "status": 400})
+
+        response = record_Sell(Product_id=Product_id, quantity=quantity, user_id=user_id)
         return response
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
 
-
+# admin
 @app.route('/getSellHistory', methods=['GET'])
 def get_sell_history():
     try:
@@ -306,7 +327,7 @@ def get_sell_history():
     
     except Exception as error:
         return jsonify({"sell_history":[],"message": str(error), 'status': 400})
-    
+    #user & #admin
 @app.route('/getusersellhistory', methods=['POST'])
 def get_user_sell_history():
     try:
@@ -316,7 +337,7 @@ def get_user_sell_history():
     except Exception as error:
         return jsonify({"sell_history":[],"message": str(error), 'status': 400})
 
-
+#update no
 
 @app.route('/getproductsellhistory', methods=['POST'])
 def get_product_sell_history():
@@ -328,61 +349,16 @@ def get_product_sell_history():
         return jsonify({"sell_history":[],"message": str(error), 'status': 400})
 
 
-# Available product table operation
-
-@app.route('/addavailableproducts', methods=['POST'])
-def add_available_product():
-    try:
-        Product_id = request.form['Product_id']  # taking product id from user
-        Product_name = request.form['Product_name']  # taking product name from user
-        category = request.form['category']  # taking category from user
-        price = float(request.form['price'])  # taking price from user
-        stock = int(request.form['stock'])  # taking stock from user
-        user_id = request.form['user_id']  # taking user id from user
-        user_name = request.form['user_name']  # taking user name from user
-
-        response = addAvailableProduct(Product_id=Product_id, product_name=Product_name, category=category, price=price, stock=stock,user_id=user_id,user_name=user_name)  # function to add available product in database
-        return jsonify({"message": 'Available Products Added Successfully','availableproducts' : response, 'status': 400})
-    except Exception as error:
-        return jsonify({"message": str(error),'availableproducts' : [], 'status': 400})
+#updateStock route
 
 
-@app.route('/getAvailableProducts', methods=['GET'])
-def get_available_products():
-    try:
-        available_product = get_Available_Products()  # function to get all available products from database
-        return jsonify({'message': "Available Products fetched Successfully",'available_product': available_product,  'status': 200})  # here we are returning the users in json format
-    
-    except Exception as error:
-        return jsonify({"message": str(error),"available_product":[], 'status': 400})
-
-@app.route('/getavailableproductbycategory', methods=['POST'])
-def get_available_product_by_category():
-    try:
-        category = request.form['category']  # taking category from user
-        available_product = getAvailableProductByCategory(category=category)  # function to get all available products of a specific category from database
-        return jsonify({'message': "Available Products fetched Successfully",'available_product': available_product,  'status': 200})  # here we are returning the users in json format
-    except Exception as error:
-        return jsonify({"message": str(error),"available_product":[], 'status': 400})
-
-@app.route('/updateavailableproduct', methods=['PATCH'])
-def update_available_product():
-    try:
-        Product_id = request.form['Product_id']  # taking product id from user
-        updateProduct = {}  # list/dictonary to store the key value pair of all the fields
-        for key, value in request.form.items():
-            if key != 'Product_id':
-                updateProduct[key] = value
-        response = updateAvailableproduct(Product_id=Product_id, updateProduct=updateProduct)  # function to update available product in database
-        return response
-    except Exception as error:
-        return jsonify({"message": str(error), 'status': 400})
 
 
 if __name__ == '__main__':
 
     createTable()
+    update_table()
 
-    app.run(debug=True)  
+    app.run(debug=True)
 
 
