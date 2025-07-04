@@ -118,23 +118,6 @@ INSERT INTO Sell_History(Sell_id, Product_id, quantity, Remaining_stock, date_of
         return jsonify({'message': str(error), 'status': 400})
     
 
-def addAvailableProduct(Product_id, product_name, category, price, stock, user_id,user_name):
-    try:
-        conn = sqlite3.connect("My_Medical_Shope.db")
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM Available_product WHERE product_id = ?', (Product_id,))
-        existing_product = cursor.fetchone()
-        if existing_product:
-            cursor.execute('UPDATE Available_product SET Remaining_stock = Remaining_stock + ? WHERE product_id = ?', (stock, Product_id))
-        else:
-            cursor.execute('''
-INSERT INTO Available_product(product_id, product_name, category, price, Remaining_stock, user_id, user_name) VALUES(?,?,?,?,?,?,?)
-''',(Product_id, product_name, category, price, stock, user_id, user_name))
-        conn.commit()
-        conn.close()
-        return jsonify({'message': 'Product Added to Available Products Successfully', 'status': 201})
-    except Exception as error:  
-        return jsonify({'message': str(error), 'status': 400})
 
         
 

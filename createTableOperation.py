@@ -15,22 +15,8 @@ def createTable():                  #function for creation of table
     conn = sqlite3.connect("My_Medical_Shope.db")          # conneting sqlite with database and automatically create  "My_Medical_Shope.db" database
     cursor = conn.cursor()                     # cursor is used to assign operation to database
 
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS Users_New (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id VARCHAR(255) UNIQUE,
-        password VARCHAR(255),
-        date_of_account_creation DATE,
-        isApproved BOOLEAN,
-        block BOOLEAN,
-        name VARCHAR(255),
-        address VARCHAR(255),
-        email VARCHAR(255) UNIQUE,
-        phone_number VARCHAR(255) UNIQUE,
-        pin_code VARCHAR(255)
-    )
-''')  
-
+    
+#otp
     #User table creation 
     cursor.execute('''
 
@@ -63,7 +49,6 @@ CREATE TABLE IF NOT EXISTS Products(
                    category VARCHAR(255),
                    stock INTEGER(255)
                    )
-
 ''')
 
 
@@ -88,12 +73,13 @@ CREATE TABLE IF NOT EXISTS Order_Details(
 ''')
     
 
+
     # Sell_History table creation 
     cursor.execute('''
 
 CREATE TABLE IF NOT EXISTS Sell_History(
-                   id INTEGER PRIMARY KEY AUTOINCREMENT,
-                   Sell_id VARCHAR(255),
+                   id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                   Sell_id VARCHAR(255),                        
                    product_id VARCHAR(255),
                    quantity INTEGER(255),
                    Remaining_stock INTEGER(255),
@@ -107,26 +93,6 @@ CREATE TABLE IF NOT EXISTS Sell_History(
                    
 ''')
     
-    # Available_Product creation
-    cursor.execute('''
-
-CREATE TABLE IF NOT EXISTS Available_product(
-                   id INTEGER PRIMARY KEY AUTOINCREMENT,
-                   product_id VARCHAR(255),
-                   product_name VARCHAR(255),
-                   category VARCHAR(255),
-                   price FLOAT,
-                   Remaining_stock INTEGER(255),
-                   user_id VARCHAR(255),
-                   user_name VARCHAR(255)
-                   )
-                   
-''')
-    
-    
-    
-    
-    
-    
+   
     conn.commit()           # it show now table is created 
     conn.close()            #affter creation of table sqlite get closed

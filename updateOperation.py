@@ -127,23 +127,5 @@ def approve_Order(Order_id,isApproved : bool):
     except Exception as error:
         return jsonify({'message': str(error), 'status': 400})
 
-def updateAvailableproduct(Product_id,updateProduct : dict):
-    try:
-        conn = sqlite3.connect("My_Medical_Shope.db")
-        cursor = conn.cursor()
-        for key, value in updateProduct.items():
-            if key == 'Remaining_stock':
-                cursor.execute('UPDATE Available_product SET Remaining_stock = ? WHERE product_id = ?', (value, Product_id))
-            elif key == 'product_name':
-                cursor.execute('UPDATE Available_product SET product_name = ? WHERE product_id = ?', (value, Product_id))
-            elif key == 'category':
-                cursor.execute('UPDATE Available_product SET category = ? WHERE product_id = ?', (value, Product_id))
-            elif key == 'price':
-                cursor.execute('UPDATE Available_product SET price = ? WHERE product_id = ?', (value, Product_id))
 
-        conn.commit()
-        conn.close()
-        return jsonify({'message': 'Product updated successfully', 'status': 200})
-    except Exception as error:
-        return jsonify({'message': str(error), 'status': 400})
 
