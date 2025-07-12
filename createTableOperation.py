@@ -5,7 +5,7 @@ def update_table():
     conn = sqlite3.connect("My_Medical_Shope.db")          # connecting sqlite with database and automatically create "My_Medical_Shope.db" database
     cursor = conn.cursor()                     # cursor is used to assign operation to database
 
-    cursor.execute('DROP TABLE IF EXISTS Users_New')  #
+    cursor.execute('DROP TABLE IF EXISTS Sell_History')  #
     conn.commit()           # it show now table is deleted 
     conn.close()            # after deletion of table sqlite get closed
 
@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS Sell_History(
                    id INTEGER PRIMARY KEY AUTOINCREMENT, 
                    Sell_id VARCHAR(255),                        
                    product_id VARCHAR(255),
+                   Order_id VARCHAR(255),
+                   isApproved BOOLEAN,
                    quantity INTEGER(255),
                    Remaining_stock INTEGER(255),
                    date_of_sell DATE,

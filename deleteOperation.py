@@ -36,5 +36,16 @@ def delete_Order(Order_id):
     except Exception as error:
         return jsonify({'message': str(error), 'status': 400})
 
+def delete_SellHistory(Sell_id):
+    try:
+        conn = sqlite3.connect("My_Medical_Shope.db")
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM Sell_History WHERE Sell_id = ?', (Sell_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Deleted successfully', 'status': 200})
+
+    except Exception as error:
+        return jsonify({'message': str(error), 'status': 400})
 
 
