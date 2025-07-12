@@ -15,7 +15,7 @@ def createUser( name, password, phoneNumber, email, pincode, address):
         date_of_Account_creation = date.today()     ## to assign date of creation
         cursor.execute('''
 
-INSERT INTO Users_New(user_id, password ,date_of_account_creation ,isApproved , block , name, address , email , phone_number ,pin_code) VALUES(?,?,?,?,?,?,?,?,?,?)
+INSERT INTO Users(user_id, password ,date_of_account_creation ,isApproved , block , name, address , email , phone_number ,pin_code) VALUES(?,?,?,?,?,?,?,?,?,?)
 
 ''', (user_id, password, date_of_Account_creation, False, False, name, address, email,phoneNumber,pincode))
 

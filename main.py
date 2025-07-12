@@ -1,5 +1,5 @@
 from flask import Flask,jsonify,request,render_template
-from createTableOperation import createTable,update_table
+from createTableOperation import createTable
 from addOperation import createUser,addProduct,createOrder,record_Sell
 from auth_user import authenticate_user
 from updateOperation import update_approve_user,add_api_key_column,update_user_details,update_product,update_Order,approve_Order
@@ -23,6 +23,7 @@ def hello_world():
     return "Hello World"
 
 
+
 @app.route('/user',methods=['GET'])  #ye root ek method on krne ko bol rha hai
                                  #  '/'-> here single / define the end point and after end point need to define function
                                  # route ko jo bhi output dena hoga us function ko define kr dege 
@@ -33,10 +34,6 @@ def hello():                     # yha par method ko define kr rhe hai
 def add_api_key():
     response = add_api_key_column()
     return jsonify(response)
-
-
-
-
 
 
 # these routes for create user 
@@ -257,7 +254,7 @@ def update_order():
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
 
-#admin
+#admin  but 
 @app.route('/approveOrder', methods=['PATCH'])
 def approve_order():
     try:
@@ -357,7 +354,6 @@ def get_product_sell_history():
 if __name__ == '__main__':
 
     createTable()
-    update_table()
 
     app.run(debug=True)
 
