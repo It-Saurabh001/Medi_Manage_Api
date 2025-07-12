@@ -1,10 +1,10 @@
 from flask import Flask,jsonify,request,render_template
-from createTableOperation import createTable
+from createTableOperation import createTable,update_table
 from addOperation import createUser,addProduct,createOrder,record_Sell
 from auth_user import authenticate_user
 from updateOperation import update_approve_user,add_api_key_column,update_user_details,update_product,update_Order,approve_Order
 from readOperation import getAllUsers,getOrderById,getSpecificUser,getAllProducts,getspecificproduct,getAllOrders,getUserOrders,getSellHistory,getUserSellHistory,getProductSellHistory
-from deleteOperation import delete_User,delete_Product,delete_Order
+from deleteOperation import delete_User,delete_Product,delete_Order,delete_SellHistory
 
 
 # here we are using flask library need to create an instance 
@@ -289,28 +289,9 @@ def delete_order():
 @app.route('/recordSell', methods=['POST'])
 def record_sell():
     try:
-        # Support both form and JSON input
-        if request.is_json:
-            data = request.get_json()
-            Product_id = data.get('Product_id')
-            quantity = data.get('quantity')
-            user_id = data.get('user_id')
-        else:
-            Product_id = request.form.get('Product_id')
-            quantity = request.form.get('quantity')
-            user_id = request.form.get('user_id')
+        Order_id = request.form.get('Order_id')
 
-        # Check for missing fields
-        if not all([Product_id, quantity, user_id]):
-            return jsonify({"message": "Missing required fields", "status": 400})
-
-        # Validate quantity
-        try:
-            quantity = int(quantity)
-        except ValueError:
-            return jsonify({"message": "Quantity must be an integer", "status": 400})
-
-        response = record_Sell(Product_id=Product_id, quantity=quantity, user_id=user_id)
+        response = record_Sell(Order_id=Order_id)  # function to record sell in database
         return response
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
@@ -348,12 +329,22 @@ def get_product_sell_history():
 
 #updateStock route
 
+@app.route('/deleteSellHistory', methods=['POST'])
+def delete_sell_history():
+    try:
+        Sell_id = request.form['Sell_id']  # taking sell id from user
+        response = delete_SellHistory(Sell_id)  # function to delete sell history from database
+        return response
+
+    except Exception as error:
+        return jsonify({"message": str(error), 'status': 400})
 
 
 
 if __name__ == '__main__':
 
     createTable()
+   
 
     app.run(debug=True)
 
