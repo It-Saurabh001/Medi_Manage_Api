@@ -4,29 +4,29 @@ from datetime import date
 from flask import Flask, jsonify
 
 
-def createUser( name, password, phoneNumber, email, pincode, address):
-
+def createUser(name, password, phoneNumber, email, pincode, address):
     try:
         conn = sqlite3.connect("My_Medical_Shope.db")
-        cursor = conn.cursor()         # manager of database
+        cursor = conn.cursor()
 
+        # Check if email already exists
+        cursor.execute('SELECT 1 FROM Users WHERE email = ?', (email,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'message': 'Email already registered', 'status': 409})
 
         user_id = str(uuid.uuid4())        # generating user id in string
         date_of_Account_creation = date.today()     ## to assign date of creation
         cursor.execute('''
-
 INSERT INTO Users(user_id, password ,date_of_account_creation ,isApproved , block , name, address , email , phone_number ,pin_code) VALUES(?,?,?,?,?,?,?,?,?,?)
-
-''', (user_id, password, date_of_Account_creation, False, False, name, address, email,phoneNumber,pincode))
-
-
+''', (user_id, password, date_of_Account_creation, False, False, name, address, email, phoneNumber, pincode))
 
         conn.commit()
         conn.close() 
-        return jsonify({'message': user_id, 'status':200})
-    
+        return jsonify({'message': user_id, 'status': 200})
+
     except Exception as error:
-        return   jsonify({'message': str(error), "status" : 400})
+        return jsonify({'message': str(error), "status": 400})
     
 def addProduct(name, price, category, stock):
     try: 
@@ -116,10 +116,10 @@ INSERT INTO Sell_History(Sell_id, Product_id, quantity, Remaining_stock, date_of
         return jsonify({'message': Sell_id, 'status': 201})
     except Exception as error:
         return jsonify({'message': str(error), 'status': 400})
-    
 
 
-        
+
+
 
 
 
