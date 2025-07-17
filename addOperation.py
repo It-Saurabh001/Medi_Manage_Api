@@ -113,6 +113,7 @@ def record_Sell(Order_id):
             conn.close()
             return jsonify({'message': 'Product not found', 'status': 404})
         stock = product[0]
+        print("product stock:", stock)
         print(f"Fetched stock: {stock}, Required quantity: {quantity}")
         if stock < quantity:
             conn.close()
