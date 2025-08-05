@@ -194,18 +194,19 @@ def getSellHistory():
     sellJson = []
     for sell in sell_history:
         tempSell = {
-            "id": sell[0],
+             "id": sell[0],
             "Sell_id":sell[1],
             "product_id": sell[2],
-            "quantity": sell[3],
-            "remaining_stock": sell[4],
-            "date_of_sell": sell[5],
-            "total_amount": sell[6],
-            "price": sell[7],
-            "product_name": sell[8],
-            "user_id": sell[9],
-            "user_name": sell[10]
-        }
+            "Order_id": sell[3],
+            "isApproved": bool(sell[4]),
+            "quantity": sell[5],
+            "remaining_stock": sell[6],
+            "date_of_sell": sell[7],
+            "total_amount": sell[8],
+            "price": sell[9],
+            "product_name": sell[10],
+            "user_id": sell[11],
+            "user_name": sell[12],}
         sellJson.append(tempSell)
     return sellJson
 
@@ -222,17 +223,19 @@ def getUserSellHistory(user_id):
     sellJson = []
     for sell in sell_history:
         tempSell = {
-            "id": sell[0],
+             "id": sell[0],
             "Sell_id":sell[1],
             "product_id": sell[2],
-            "quantity": sell[3],
-            "remaining_stock": sell[4],
-            "date_of_sell": sell[5],
-            "total_amount": sell[6],
-            "price": sell[7],
-            "product_name": sell[8],
-            "user_id": sell[9],
-            "user_name": sell[10]
+            "Order_id": sell[3],
+            "isApproved": bool(sell[4]),
+            "quantity": sell[5],
+            "remaining_stock": sell[6],
+            "date_of_sell": sell[7],
+            "total_amount": sell[8],
+            "price": sell[9],
+            "product_name": sell[10],
+            "user_id": sell[11],
+            "user_name": sell[12],
         }
         sellJson.append(tempSell)
     return sellJson
@@ -251,14 +254,16 @@ def getProductSellHistory(Product_id):
             "id": sell[0],
             "Sell_id":sell[1],
             "product_id": sell[2],
-            "quantity": sell[3],
-            "remaining_stock": sell[4],
-            "date_of_sell": sell[5],
-            "total_amount": sell[6],
-            "price": sell[7],
-            "product_name": sell[8],
-            "user_id": sell[9],
-            "user_name": sell[10]
+            "Order_id": sell[3],
+            "isApproved": bool(sell[4]),
+            "quantity": sell[5],
+            "remaining_stock": sell[6],
+            "date_of_sell": sell[7],
+            "total_amount": sell[8],
+            "price": sell[9],
+            "product_name": sell[10],
+            "user_id": sell[11],
+            "user_name": sell[12],
         }
         sellJson.append(tempSell)
     return sellJson
