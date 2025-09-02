@@ -115,15 +115,20 @@ def update_Order(Order_id, updateOrder : dict):
         return jsonify({'message': str(error), 'status': 400})
 
 
-def approve_Order(Order_id,isApproved : bool):
+def approve_Order(Order_id,isApproved : int):
     try:
         conn = sqlite3.connect("My_Medical_Shope.db")
         cursor = conn.cursor()
+        
+        
         cursor.execute('UPDATE Order_Details SET isApproved = ? WHERE Order_id = ?', (isApproved, Order_id))
+        
 
         conn.commit()
         conn.close()
+        # if affected_rows > 0:
         return jsonify({'message': 'Order updated successfully', 'status': 200})
+        # return jsonify({'message': 'Order not found  ', 'status': 404})
     except Exception as error:
         return jsonify({'message': str(error), 'status': 400})
 
