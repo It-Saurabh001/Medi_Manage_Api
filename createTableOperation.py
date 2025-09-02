@@ -1,14 +1,6 @@
 import sqlite3
 
 
-def update_table():
-    conn = sqlite3.connect("My_Medical_Shope.db")          # connecting sqlite with database and automatically create "My_Medical_Shope.db" database
-    cursor = conn.cursor()                     # cursor is used to assign operation to database
-
-    cursor.execute('DROP TABLE IF EXISTS Sell_History')  #
-    conn.commit()           # it show now table is deleted 
-    conn.close()            # after deletion of table sqlite get closed
-
 
 def createTable():                  #function for creation of table 
     

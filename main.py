@@ -1,5 +1,5 @@
 from flask import Flask,jsonify,request,render_template
-from createTableOperation import createTable,update_table
+from createTableOperation import createTable
 from addOperation import createUser,addProduct,createOrder,record_Sell
 from auth_user import authenticate_user
 from updateOperation import update_approve_user,add_api_key_column,update_user_details,update_product,update_Order,approve_Order
@@ -260,6 +260,10 @@ def approve_order():
     try:
         Order_id = request.form['Order_id']  # taking order id from user
         isApproved = request.form['isApproved']  # taking isApproved section from user so that changes are made
+        if (isApproved == "true"):
+            isApproved = 1
+        elif isApproved == "false":
+            isApproved = 0
         response = approve_Order(Order_id=Order_id, isApproved= isApproved)  # function to approve order in database
         return response
     except Exception as error:
@@ -346,6 +350,7 @@ if __name__ == '__main__':
     createTable()
    
 
-    app.run(debug=True)
+    # app.run( debug=True)
+    app.run( host="0.0.0.0",port=5000,debug=True)
 
 
