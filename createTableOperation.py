@@ -1,5 +1,17 @@
 import sqlite3
 
+def updateTable():
+    conn = sqlite3.connect("My_Medical_Shope.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER TABLE Order_Details ADD COLUMN sold BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        print("Column sold alerady exists in Order_Details table")
+
+    cursor.execute("UPDATE Order_Details SET sold = 0 WHERE sold IS NULL")
+    conn.commit()
+    conn.close()
+
 
 
 def createTable():                  #function for creation of table 

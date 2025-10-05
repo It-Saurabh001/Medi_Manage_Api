@@ -1,10 +1,10 @@
 from flask import Flask,jsonify,request,render_template
-from createTableOperation import createTable
-from addOperation import createUser,addProduct,createOrder,record_Sell
-from auth_user import authenticate_user
-from updateOperation import update_approve_user,add_api_key_column,update_user_details,update_product,update_Order,approve_Order
-from readOperation import getAllUsers,getOrderById,getSpecificUser,getAllProducts,getspecificproduct,getAllOrders,getUserOrders,getSellHistory,getUserSellHistory,getProductSellHistory
-from deleteOperation import delete_User,delete_Product,delete_Order,delete_SellHistory
+from createTableOperation import *
+from addOperation import *
+from auth_user import *
+from updateOperation import *
+from readOperation import *
+from deleteOperation import *
 
 
 # here we are using flask library need to create an instance 
@@ -347,6 +347,7 @@ def delete_sell_history():
 
 if __name__ == '__main__':
 
+    updateTable()
     createTable()
    
 
