@@ -1,5 +1,7 @@
 import sqlite3
 from flask import Flask,jsonify
+from flask_jwt_extended import jwt_required
+
 
 def getAllUsers():
     conn = sqlite3.connect("My_Medical_Shope.db")
@@ -21,11 +23,36 @@ def getAllUsers():
             "address": user[7],
             "email":user[8],
             "phone_number": user[9],
-            "pin_code":user[10]
+            "pin_code":user[10],
+            "role": user[11]
         }
         userJson.append(tempUser)    
     conn.close()    
     return userJson               # no change in database thus no use of commit 
+
+def getAllAdmins():
+    conn = sqlite3.connect("My_Medical_Shope.db")
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM Admin ')
+
+    admins = cursor.fetchall()
+
+    adminJson = []
+    for admin in admins:                  # this loop is used to assign specific key to the values 
+        tempUser = {
+            "id": admin[0],
+            "admin_id":admin[1],
+            "password": admin[2],
+            "date_of_account_creation": admin[3],
+            "name": admin[4],
+            "email":admin[5],
+            "phone_number": admin[6],
+            "role": admin[7]
+           
+        }
+        adminJson.append(tempUser)    
+    conn.close()    
+    return adminJson               # no change in database thus no use of commit 
 
 
 def getSpecificUser(userId):
@@ -74,7 +101,6 @@ def getAllProducts():
     
        
     
-
 def getspecificproduct(Product_id):        
     conn = sqlite3.connect("My_Medical_Shope.db")
     cursor = conn.cursor()
@@ -116,12 +142,12 @@ def getAllOrders():
             "product_name": order[9],
             "user_name": order[10],
             "message": order[11],
-            "category": order[12]
+            "category": order[12],
+            "sold": bool(order[13])
         }
         orderJson.append(tempOrder)
     return orderJson               # no change in database thus no use of commit
        
-
 def getUserOrders(user_id):
     
     conn = sqlite3.connect("My_Medical_Shope.db")
@@ -145,7 +171,8 @@ def getUserOrders(user_id):
             "product_name": order[9],
             "user_name": order[10],
             "message": order[11],
-            "category": order[12]
+            "category": order[12],
+            "sold": bool(order[13])
         }
         orderJson.append(tempOrder)
     return orderJson
@@ -173,13 +200,13 @@ def getOrderById(Order_id):
         "product_name": order[9],
         "user_name": order[10],
         "message": order[11],
-        "category": order[12]
+        "category": order[12],
+        "sold": bool(order[13])
     }
     
     return tempOrder
        
         
-
 
 
 
@@ -209,7 +236,6 @@ def getSellHistory():
             "user_name": sell[12],}
         sellJson.append(tempSell)
     return sellJson
-
 
 
 def getUserSellHistory(user_id):

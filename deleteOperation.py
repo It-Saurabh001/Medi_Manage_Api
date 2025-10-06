@@ -11,6 +11,18 @@ def delete_User(user_id):
     return jsonify({'message': 'User Deleted Successfully', 'status': 200})
 
 
+def delete_Admin(admin_id):
+    conn = sqlite3.connect("My_Medical_Shope.db")
+    cursor = conn.cursor()
+
+    cursor.execute('DELETE FROM Admin WHERE admin_id = ?',(admin_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Admin Deleted Successfully', 'status': 200})
+
+
+
+
 # Products table delete operation 
 def delete_Product(Product_id):
     try:
