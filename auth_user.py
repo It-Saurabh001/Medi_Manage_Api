@@ -89,7 +89,7 @@ def request_admin_pswd_reset(email):
     admin = cursor.fetchone()
     conn.close()
     if not admin:
-        return {'status': 404, 'message': 'Email not registered'}
+        return {'status': 404,'admin_id': None, 'message': 'Email not registered'}
     admin_id = admin[0]
     otp = random.randint(100000, 999999)
     expiry = time.time() + 300  # 5 min

@@ -38,7 +38,7 @@ def dox():
 def hello_world():
     return "Hello World"
 
-@app.route('/refreshToken', methods=['POST'])
+@app.route('/admin/refreshToken', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh_token():
     admin_id = get_jwt_identity()
@@ -48,12 +48,8 @@ def refresh_token():
     
     return jsonify({"access_token": new_access_token})
 
-@app.route('/addApiKeyColumn', methods=['GET'])
-def add_api_key():
-    response = add_api_key_column()
-    return jsonify(response)
 
-@app.route('/createAdmin', methods=['POST'])
+@app.route('/admin/create', methods=['POST'])
 def create_admin():
     try:
         email = request.form['email']
@@ -67,7 +63,7 @@ def create_admin():
         return jsonify({"message": str(error), 'status': 400})
 
 
-@app.route('/loginAdmin', methods = ['POST'])         # taking information from user that's why here post is used 
+@app.route('/admin/login', methods = ['POST'])         # taking information from user that's why here post is used 
 def login_Admin():
     try:
         email = request.form['email']           # requesting email from user
@@ -90,7 +86,7 @@ def login_Admin():
         return jsonify({'message' : str(error), "status" : 400})
     
 
-@app.route('/verifyOtp', methods=['POST'])
+@app.route('/admin/verifyOtp', methods=['POST'])
 def verify_admin_otp():
     try:
         admin_id = request.form['admin_id']
@@ -119,7 +115,7 @@ def verify_admin_otp():
     except Exception as error:
         return jsonify({'status' : 400, 'message': str(error)})
 
-@app.route('/getAllAdmins', methods = ['GET'])           # GET method is used so that admin fetch all users 
+@app.route('/admin/getAllAdmins', methods = ['GET'])           # GET method is used so that admin fetch all users 
 @role_required(["admin"])   # only admin can access
 def get_All_Admins():
     try:
@@ -131,7 +127,7 @@ def get_All_Admins():
 
 # these routes for create user 
 
-@app.route('/createUser', methods=['POST'])             # requesting information from user
+@app.route('/user/create', methods=['POST'])             # requesting information from user
 def create_user():
     try:
         name = request.form['name']
@@ -151,7 +147,7 @@ def create_user():
     except Exception as e:
         return jsonify({'message': str(e), "status" : 400})
 
-@app.route('/requestUserPasswordReset', methods=['POST'])
+@app.route('/user/requestUserPasswordReset', methods=['POST'])
 def request_user_password_reset():
     try:
         email = request.form['email']
@@ -160,7 +156,7 @@ def request_user_password_reset():
     except Exception as error:
         return jsonify({'status': 400, 'message': str(error)})
     
-@app.route('/resetUserPasswordWithOtp', methods=['POST'])
+@app.route('/user/resetUserPasswordWithOtp', methods=['POST'])
 def reset_user_password_with_otp():
     try:
         user_id = request.form['user_id']
@@ -171,16 +167,16 @@ def reset_user_password_with_otp():
     except Exception as error:
         return jsonify({'status': 400, 'message': str(error)})
 
-@app.route('/requestAdminPasswordReset', methods=['POST'])
+@app.route('/admin/requestAdminPasswordReset', methods=['POST'])
 def request_admin_password_reset():
     try:
         email = request.form['email']
         response = request_admin_pswd_reset(email)
         return response
     except Exception as error:
-        return jsonify({'status': 400, 'message': str(error)})
+        return jsonify({'status': 400, 'admin_id':None,'message': str(error)})
     
-@app.route('/resetAdminPasswordWithOtp', methods=['POST'])
+@app.route('/admin/resetAdminPasswordWithOtp', methods=['POST'])
 def reset_admin_password_with_otp():
     try:
         admin_id = request.form['admin_id']
@@ -191,7 +187,7 @@ def reset_admin_password_with_otp():
     except Exception as error:
         return jsonify({'status': 400, 'message': str(error)})
 
-@app.route('/login', methods=['POST'])
+@app.route('/user/login', methods=['POST'])
 def login_user():
     try:
         email = request.form['email']
@@ -203,13 +199,13 @@ def login_user():
             expiry = time.time() + 300  # 5 minutes expiry
             user_otp_store[user_id] = {"otp": otp, "expiry": expiry}
             send_otp_email(to_email=email, otp=otp)
-            return jsonify({'status': 200, 'user_id': user_id, 'role': role, 'message': 'OTP sent to your email'})
+            return jsonify({ 'user_id': user_id, 'role': role, 'message': 'OTP sent to your email','status': 200})
         else:
-            return jsonify({'status': 401, 'message': 'Invalid email or password'})
+            return jsonify({'user_id': None, 'message': 'Invalid email or password','status': 401})
     except Exception as error:
-        return jsonify({'message': str(error), "status": 400})
+        return jsonify({'user_id': None,'message': str(error), "status": 400})
     
-@app.route('/verifyUserOtp', methods=['POST'])
+@app.route('/user/verifyUserOtp', methods=['POST'])
 def verify_user_otp():
     try:
         user_id = request.form['user_id']
@@ -236,7 +232,7 @@ def verify_user_otp():
     except Exception as error:
         return jsonify({'status': 400, 'message': str(error)})
 
-@app.route('/getAllUsers', methods = ['GET'])           # GET method is used so that admin fetch all users 
+@app.route('/admin/getAllUsers', methods = ['GET'])           # GET method is used so that admin fetch all users 
 @role_required(["admin"])   # only admin can access
 def get_All_Users():
     try:
@@ -249,7 +245,7 @@ def get_All_Users():
 
 
 
-@app.route('/getSpecificUser',methods=['POST'])  
+@app.route('/admin/user/getSpecificUser',methods=['POST'])  
 @role_required(["admin", "user"])
 def get_Specific_User():
     try:
@@ -260,7 +256,7 @@ def get_Specific_User():
         return jsonify({'user': user,'message': str(error)+ " mistacks are there", 'status':400})
 
 
-@app.route('/approveUser', methods=['PATCH'])
+@app.route('/admin/approveUser', methods=['PATCH'])
 @role_required(["admin"])
 def approve_User():
     try:
@@ -274,7 +270,7 @@ def approve_User():
         return jsonify({"message":str(error), 'status':400 })
 
 
-@app.route('/updateUser', methods = ['PATCH'])
+@app.route('/admin/updateUser', methods = ['PATCH'])
 @role_required(["admin", "user"])
 def update_user():
     try:
@@ -290,11 +286,11 @@ def update_user():
         return jsonify({'message': str(error),'status' : 400})
     
 
-@app.route('/updateAdmin', methods = ['PATCH'])
+@app.route('/admin/update', methods = ['PATCH'])
 @role_required(["admin"])
 def update_admin():
     try:
-        admin_id =  request.form['admin_id']              # this function will run on user side and some accessability provided to admin 
+        admin_id =  request.form['admin_id']              # this function will run on admin side
         updateAdmin = {}        # list/dictonary to store the key value pair of all the fields 
         for key, value in request.form.items():             # requesting all the  section of the form so that changes are made where required 
             if key != 'user_id':
@@ -310,7 +306,7 @@ def update_admin():
 # as retrofit does not accept delete method with parameter 
 #  so we are using post method instead of delete method 
 
-@app.route('/deleteUser', methods = ['POST'])
+@app.route('/admin/deleteUser', methods = ['POST'])
 @role_required(["admin"])
 def delete_user():
     try:
@@ -321,7 +317,7 @@ def delete_user():
         return jsonify({"message": str(error), 'status': 400})
     
 
-@app.route('/deleteAdmin', methods = ['POST'])
+@app.route('/admin/delete', methods = ['POST'])
 @role_required(["admin"])
 def delete_admin():
     try:
@@ -338,7 +334,7 @@ def delete_admin():
 #pruduct update
 
 
-@app.route('/addProduct', methods = ['POST'])
+@app.route('/admin/addProduct', methods = ['POST'])
 @role_required(["admin"])
 def add_product():
     try:
@@ -353,7 +349,7 @@ def add_product():
         return jsonify({"message": str(error), 'status': 400})
 
 #admin & user
-@app.route('/getAppProducts', methods = ['GET'])
+@app.route('/admin/user/getAllProducts', methods = ['GET'])
 @role_required(["admin", "user"])
 def get_all_products():
     try: 
@@ -364,7 +360,7 @@ def get_all_products():
         return jsonify({'products':[],"message": str(error), 'status': 400})
 
 #user & admin
-@app.route('/getSpecificProduct', methods = ['POST'])
+@app.route('/admin/user/getSpecificProduct', methods = ['POST'])
 @role_required(["admin", "user"])
 def get_specific_product():
     try:
@@ -375,7 +371,7 @@ def get_specific_product():
     except Exception as error:
         return jsonify({'product':[],"message": str(error), 'status': 400})
 #admin
-@app.route('/updateProduct', methods = ['PATCH'])    # isme mai hi available product manage krna hai no need of new product table
+@app.route('/admin/updateProduct', methods = ['PATCH'])    # isme mai hi available product manage krna hai no need of new product table
 @role_required(["admin"])
 def update__product():
     try:
@@ -389,7 +385,7 @@ def update__product():
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
 #admin
-@app.route('/deleteProduct', methods = ['POST'])
+@app.route('/admin/deleteProduct', methods = ['POST'])
 @role_required(["admin"])
 def delete_product():
     try:
@@ -403,7 +399,7 @@ def delete_product():
 
 # Order table operation
 #user
-@app.route('/createOrder', methods=['POST'])
+@app.route('/user/createOrder', methods=['POST'])
 @role_required(["admin", "user"])
 def create_order():
     try:
@@ -418,7 +414,7 @@ def create_order():
         return jsonify({"message": str(error), 'status': 400})  
 
 #admin
-@app.route('/getAllOrders', methods=['GET'])
+@app.route('/admin/getAllOrders', methods=['GET'])
 @role_required(["admin"])
 def get_all_orders():
     try:
@@ -429,7 +425,7 @@ def get_all_orders():
     except Exception as error:
         return jsonify({"orders":[],"message": str(error), 'status': 400})
 #admin & user
-@app.route('/getUserOrders', methods=['POST'])
+@app.route('/admin/user/getOrdersByUserId', methods=['POST'])
 @role_required(["admin", "user"])
 def get_user_orders():
     try:
@@ -439,7 +435,7 @@ def get_user_orders():
     except Exception as error:
         return jsonify({"order":[],"message": str(error), 'status': 400})
 #admin & user
-@app.route('/orderById', methods=['POST'])
+@app.route('/admin/user/orderById', methods=['POST'])
 @role_required(["admin", "user"])
 def get_order_by_id():
     try:
@@ -450,7 +446,7 @@ def get_order_by_id():
     except Exception as error:
         return jsonify({"order":[],"message": str(error), 'status': 400})
 #admin
-@app.route('/updateOrder', methods=['PATCH'])
+@app.route('/admin/updateOrder', methods=['PATCH'])
 @role_required(["admin"])
 def update_order():
     try:
@@ -465,7 +461,7 @@ def update_order():
         return jsonify({"message": str(error), 'status': 400})
 
 #admin  but 
-@app.route('/approveOrder', methods=['PATCH'])
+@app.route('/admin/approveOrder', methods=['PATCH'])
 @role_required(["admin"])
 def approve_order():
     try:
@@ -481,7 +477,7 @@ def approve_order():
         return jsonify({"message": str(error), 'status': 400})
 
 
-@app.route('/deleteOrder', methods=['POST'])
+@app.route('/admin/deleteOrder', methods=['POST'])
 @role_required(["admin"])
 def delete_order():
     try:
@@ -502,7 +498,7 @@ def delete_order():
 
 #call this route as soon as order placed
 # sell history table creation admin
-@app.route('/recordSell', methods=['POST'])
+@app.route('/admin/recordSell', methods=['POST'])
 @role_required(["admin"])
 def record_sell():
     try:
@@ -514,7 +510,7 @@ def record_sell():
         return jsonify({"message": str(error), 'status': 400})
 
 # admin
-@app.route('/getSellHistory', methods=['GET'])
+@app.route('/admin/getSellHistory', methods=['GET'])
 @role_required(["admin"])
 def get_sell_history():
     try:
@@ -524,7 +520,7 @@ def get_sell_history():
     except Exception as error:
         return jsonify({"sell_history":[],"message": str(error), 'status': 400})
     #user & #admin
-@app.route('/getusersellhistory', methods=['POST'])
+@app.route('/admin/user/getSellHistoryByUserId', methods=['POST'])
 @role_required(["admin", "user"])
 def get_user_sell_history():
     try:
@@ -536,7 +532,7 @@ def get_user_sell_history():
 
 #update no
 
-@app.route('/getproductsellhistory', methods=['POST'])
+@app.route('/admin/getproductsellhistory', methods=['POST'])
 @role_required(["admin", "user"])
 def get_product_sell_history():
     try:
@@ -549,7 +545,7 @@ def get_product_sell_history():
 
 #updateStock route
 
-@app.route('/deleteSellHistory', methods=['POST'])
+@app.route('/admin/deleteSellHistory', methods=['POST'])
 @role_required(["admin"])
 def delete_sell_history():
     try:

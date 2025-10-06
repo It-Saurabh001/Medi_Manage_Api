@@ -11,21 +11,6 @@ def update_approve_user(userId, approve):
     conn.commit()
     conn.close()
 
-def add_api_key_column():
-    try:
-        conn = sqlite3.connect("My_Medical_Shope.db")  # Database connect karo
-        cursor = conn.cursor()
-        
-        # Naya column add karne ke liye SQL query
-        cursor.execute("ALTER TABLE Users ADD COLUMN api_key TEXT UNIQUE;")
-
-        conn.commit()
-        conn.close()
-
-        return {"message": "API key column added successfully", "status": 200}
-
-    except Exception as error:
-        return {"message": str(error), "status": 400}
 
 
 
