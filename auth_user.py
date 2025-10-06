@@ -21,7 +21,7 @@ def authenticate_user(email, password):
     return None  # return None if not authenticated
 
 
-## request for reset password 
+## request for reset user password 
 def request_user_pswd_reset(email):
     conn = sqlite3.connect("My_Medical_Shope.db")
     cursor = conn.cursor()
@@ -80,6 +80,46 @@ def authenticate_admin(email, password):
             return user_id, role  # return admin id if authenticated
 
     return None  # return None if not authenticated
+
+## request for reset user password 
+def request_admin_pswd_reset(email):
+    conn = sqlite3.connect("My_Medical_Shope.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT admin_id FROM Admin WHERE email = ?", (email,))
+    admin = cursor.fetchone()
+    conn.close()
+    if not admin:
+        return {'status': 404, 'message': 'Email not registered'}
+    admin_id = admin[0]
+    otp = random.randint(100000, 999999)
+    expiry = time.time() + 300  # 5 min
+    otp_store[admin_id] = {"otp": otp, "expiry": expiry}
+    send_otp_email(to_email=email, otp=otp)
+    return {'status': 200, 'admin_id': admin_id, 'message': 'OTP sent to your email'}
+
+## reset password after opt matched
+
+def reset_admin_pswd_with_otp(admin_id, otp, new_password):
+    if admin_id not in otp_store:
+        return {'status': 400, 'message': 'No OTP request found'}
+    stored_otp = otp_store[admin_id]['otp']
+    expiry = otp_store[admin_id]['expiry']
+
+    if time.time() > expiry:
+        del otp_store[admin_id]
+        return {'status': 400, 'message': 'OTP expired'}
+
+    if int(otp) == stored_otp:
+        hashed_password = generate_password_hash(new_password)
+        conn = sqlite3.connect("My_Medical_Shope.db")
+        cursor = conn.cursor()
+        cursor.execute("UPDATE Admin SET password = ? WHERE admin_id = ?", (hashed_password, admin_id))
+        conn.commit()
+        conn.close()
+        del otp_store[admin_id]
+        return {'status': 200, 'message': 'Password reset successful'}
+    else:
+        return {'status': 400, 'message': 'Invalid OTP'}
 
 
 

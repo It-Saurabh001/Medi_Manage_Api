@@ -171,6 +171,26 @@ def reset_user_password_with_otp():
     except Exception as error:
         return jsonify({'status': 400, 'message': str(error)})
 
+@app.route('/requestAdminPasswordReset', methods=['POST'])
+def request_admin_password_reset():
+    try:
+        email = request.form['email']
+        response = request_admin_pswd_reset(email)
+        return response
+    except Exception as error:
+        return jsonify({'status': 400, 'message': str(error)})
+    
+@app.route('/resetAdminPasswordWithOtp', methods=['POST'])
+def reset_admin_password_with_otp():
+    try:
+        admin_id = request.form['admin_id']
+        otp = request.form['otp']
+        new_password = request.form['new_password']
+        response = reset_admin_pswd_with_otp(admin_id, otp, new_password)
+        return response
+    except Exception as error:
+        return jsonify({'status': 400, 'message': str(error)})
+
 @app.route('/login', methods=['POST'])
 def login_user():
     try:
