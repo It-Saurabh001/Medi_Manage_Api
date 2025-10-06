@@ -68,6 +68,34 @@ def update_user_details(user_id,updateUser : dict):
     return count
 
 
+def update_admin_details(admin_id,updateAdmin : dict):
+    conn = sqlite3.connect("My_Medical_Shope.db")
+
+    cursor =conn.cursor()
+    count = 0
+    for key , value in updateAdmin.items():              # taking all the items from dictonary where all the key and value stored 
+        if key == 'name':
+            cursor.execute('UPDATE Admin SET name = ? WHERE admin_id = ?',(value, admin_id))
+            count = count+1
+        elif key == 'password':
+            cursor.execute('UPDATE Admin SET password = ? WHERE admin_id = ?',(value, admin_id))
+            count +=1
+        elif key == 'date_of_account_creation':
+            cursor.execute('UPDATE Admin SET date_of_account_creation = ? WHERE admin_id = ?',(value, admin_id))
+            count +=1
+        elif key == 'email':
+            cursor.execute('UPDATE Admin SET email = ? WHERE admin_id = ?',(value, admin_id))
+            count +=1
+        elif key == 'phone_number':
+            cursor.execute('UPDATE Admin SET phone_number = ? WHERE admin_id = ?',(value, admin_id))
+            count +=1
+    conn.commit()
+    conn.close()
+    return count
+
+
+
+
 # Products table update and delete operation
 def update_product(Product_id, updateProduct : dict):
     try:

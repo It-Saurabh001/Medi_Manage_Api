@@ -2,9 +2,36 @@ import sqlite3              # import sqlite3 to connect with database
 import uuid, secrets
 from datetime import date
 from flask import Flask, jsonify
+from werkzeug.security import generate_password_hash, check_password_hash
+
+def createAdmin(email, name, password,phoneNumber, role):
+    try:
+        conn = sqlite3.connect("My_Medical_Shope.db")
+        cursor = conn.cursor()
+
+        # Check if email already exists
+        cursor.execute('SELECT 1 FROM Admin WHERE email = ?',(email,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({'message': 'Email already registered', 'status': 409})
+
+        admin_id = "AID"+str(uuid.uuid4().hex)[:8]        #generating admin id
+        date_of_Account_creation = date.today()     ## to assign date of creation
+        hashpassword = generate_password_hash(password)
+        cursor.execute('''
+INSERT INTO Admin(admin_id, password, name, email,phone_number,date_of_account_creation, role) VALUES(?,?,?,?,?,?,?)
+''', (admin_id, hashpassword, name, email,phoneNumber, date_of_Account_creation, role))
+
+        conn.commit()
+        conn.close()
+        return jsonify({'message': f"Admin created with role {role} and admin id = ${admin_id} ", 'status': 201})
+
+    except Exception as error:
+        return jsonify({'message': str(error), "status": 400})
 
 
-def createUser(name, password, phoneNumber, email, pincode, address):
+
+def createUser(name, password, phoneNumber, email, pincode, address,role):
     try:
         conn = sqlite3.connect("My_Medical_Shope.db")
         cursor = conn.cursor()
@@ -15,15 +42,18 @@ def createUser(name, password, phoneNumber, email, pincode, address):
             conn.close()
             return jsonify({'message': 'Email already registered', 'status': 409})
 
-        user_id = str(uuid.uuid4())        # generating user id in string
+        user_id = "UID"+str(uuid.uuid4().hex)[:8]        # generating user id in string
         date_of_Account_creation = date.today()     ## to assign date of creation
+        
+        # hasing password 
+        hash_password = generate_password_hash(password)
         cursor.execute('''
-INSERT INTO Users(user_id, password ,date_of_account_creation ,isApproved , block , name, address , email , phone_number ,pin_code) VALUES(?,?,?,?,?,?,?,?,?,?)
-''', (user_id, password, date_of_Account_creation, False, False, name, address, email, phoneNumber, pincode))
+INSERT INTO Users(user_id, password ,date_of_account_creation ,isApproved , block , name, address , email , phone_number ,pin_code,role) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+''', (user_id, hash_password, date_of_Account_creation, False, False, name, address, email, phoneNumber, pincode,role))
 
         conn.commit()
         conn.close() 
-        return jsonify({'message': user_id, 'status': 200})
+        return jsonify({'message': f"User created with role {role}  and user id = ${user_id} ", 'status': 201})
 
     except Exception as error:
         return jsonify({'message': str(error), "status": 400})
