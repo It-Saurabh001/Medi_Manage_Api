@@ -1,149 +1,98 @@
-import sqlite3,random,time
+import sqlite3
+import time
+import random
 from werkzeug.security import check_password_hash, generate_password_hash
-from verification import send_otp_email
+from verification import send_email
 from flask import jsonify
-from otp_store import *
 
+# NOTE: It's recommended to use a more persistent and scalable OTP store in a production environment, such as Redis or a database table.
+otp_store = {}
 
-def authenticate_user(email, password):
-    
-    conn = sqlite3.connect("My_Medical_Shope.db")           # database se connect / open
-    cursor = conn.cursor()                                  # curson ko open kr rhe jisme saare data aayege 
-
-    cursor.execute("SELECT user_id,password, role FROM Users WHERE email = ?",(email,))            # Users tables se sabhi row ko fetch krege jiske email and password match krega 
-    user = cursor.fetchone()      # cursor ke pass sare data aayege tab usme se fetch one krege 
-    conn.close()
-    if user :
-        user_id,stored_password, role = user
-         # Verify plain password against hashed password
-        if check_password_hash(stored_password, password):
-            return user_id, role  # return user id if authenticated
-    return None  # return None if not authenticated
-
-
-## request for reset user password 
-def request_user_pswd_reset(email):
+# NOTE: Database connection should be managed in a central place, for example, using Flask's application context.
+# This is a simplified example.
+def get_db_connection():
     conn = sqlite3.connect("My_Medical_Shope.db")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def generate_otp():
+    return str(random.randint(100000, 999999))
+
+def _get_user_by_email(email, user_type):
+    table_name = "Users" if user_type == "user" else "Admin"
+    id_column = "user_id" if user_type == "user" else "admin_id"
+    
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM Users WHERE email = ?", (email,))
+    cursor.execute(f"SELECT {id_column}, password, role FROM {table_name} WHERE email = ?", (email,))
     user = cursor.fetchone()
     conn.close()
-    if not user:
-        return {'status': 404, 'message': 'Email not registered'}
-    user_id = user[0]
-    otp = random.randint(100000, 999999)
-    expiry = time.time() + 300  # 5 min
-    user_otp_store[user_id] = {"otp": otp, "expiry": expiry}
-    send_otp_email(to_email=email, otp=otp)
-    return {'status': 200, 'user_id': user_id, 'message': 'OTP sent to your email'}
+    return user
 
-## reset password after opt matched
-
-def reset_password_with_otp(user_id, otp, new_password):
-    if user_id not in user_otp_store:
-        return {'status': 400, 'message': 'No OTP request found'}
-    stored_otp = user_otp_store[user_id]['otp']
-    expiry = user_otp_store[user_id]['expiry']
-
-    if time.time() > expiry:
-        del user_otp_store[user_id]
-        return {'status': 400, 'message': 'OTP expired'}
-
-    if int(otp) == stored_otp:
-        hashed_password = generate_password_hash(new_password)
-        conn = sqlite3.connect("My_Medical_Shope.db")
-        cursor = conn.cursor()
-        cursor.execute("UPDATE Users SET password = ? WHERE user_id = ?", (hashed_password, user_id))
-        conn.commit()
-        conn.close()
-        del user_otp_store[user_id]
-        return {'status': 200, 'message': 'Password reset successful'}
-    else:
-        return {'status': 400, 'message': 'Invalid OTP'}
-
-
-
-def authenticate_admin(email, password):
-    
-    conn = sqlite3.connect("My_Medical_Shope.db")           # database se connect / open
-    cursor = conn.cursor()                                  # curson ko open kr rhe jisme saare data aayege 
-
-    cursor.execute("SELECT admin_id,password, role FROM Admin WHERE email = ?",(email,))            # Users tables se sabhi row ko fetch krege jiske email and password match krega 
-
-    user = cursor.fetchone()      # cursor ke pass sare data aayege tab usme se fetch one krege 
-
-    conn.close()
-    if user :
-        user_id,stored_password, role = user
-         # Verify plain password against hashed password
-        if check_password_hash(stored_password, password):
-            return user_id, role  # return admin id if authenticated
-
-    return None  # return None if not authenticated
-
-## request for reset user password 
-def request_admin_pswd_reset(email):
-    conn = sqlite3.connect("My_Medical_Shope.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT admin_id FROM Admin WHERE email = ?", (email,))
-    admin = cursor.fetchone()
-    conn.close()
-    if not admin:
-        return {'status': 404,'admin_id': None, 'message': 'Email not registered'}
-    admin_id = admin[0]
-    otp = random.randint(100000, 999999)
-    expiry = time.time() + 300  # 5 min
-    otp_store[admin_id] = {"otp": otp, "expiry": expiry}
-    send_otp_email(to_email=email, otp=otp)
-    return {'status': 200, 'admin_id': admin_id, 'message': 'OTP sent to your email'}
-
-## reset password after opt matched
-
-def reset_admin_pswd_with_otp(admin_id, otp, new_password):
-    if admin_id not in otp_store:
-        return {'status': 400, 'message': 'No OTP request found'}
-    stored_otp = otp_store[admin_id]['otp']
-    expiry = otp_store[admin_id]['expiry']
-
-    if time.time() > expiry:
-        del otp_store[admin_id]
-        return {'status': 400, 'message': 'OTP expired'}
-
-    if int(otp) == stored_otp:
-        hashed_password = generate_password_hash(new_password)
-        conn = sqlite3.connect("My_Medical_Shope.db")
-        cursor = conn.cursor()
-        cursor.execute("UPDATE Admin SET password = ? WHERE admin_id = ?", (hashed_password, admin_id))
-        conn.commit()
-        conn.close()
-        del otp_store[admin_id]
-        return {'status': 200, 'message': 'Password reset successful'}
-    else:
-        return {'status': 400, 'message': 'Invalid OTP'}
-
-
-
-
-
-def authenticate_admin_by_id(admin_id):
-    conn = sqlite3.connect("My_Medical_Shope.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT admin_id, role FROM Admin WHERE admin_id = ?", (admin_id,))
-    user = cursor.fetchone()
-    conn.close()
-    if user:
-        return user[0], user[1]
+def authenticate(email, password, user_type):
+    user = _get_user_by_email(email, user_type)
+    if user and check_password_hash(user['password'], password):
+        id_column = "user_id" if user_type == "user" else "admin_id"
+        return user[id_column], user['role']
     return None, None
 
+def request_password_reset(email, user_type):
+    user = _get_user_by_email(email, user_type)
+    if not user:
+        return jsonify({'message': 'Email not registered'}), 404
 
+    id_column = "user_id" if user_type == "user" else "admin_id"
+    user_id = user[id_column]
+    
+    otp = generate_otp()
+    expiry = time.time() + 300  # 5 minutes
+    otp_store[user_id] = {"otp": otp, "expiry": expiry}
 
+    subject = "Your Password Reset OTP"
+    body = f"Your OTP for password reset is: {otp}. It will expire in 5 minutes."
+    
+    if send_email(to_email=email, subject=subject, body=body):
+        return jsonify({'message': 'OTP sent to your email', 'user_id': user_id}), 200
+    else:
+        return jsonify({'message': 'Failed to send OTP email'}), 500
 
-def authenticate_user_by_id(user_id):
-    conn = sqlite3.connect("My_Medical_Shope.db")
+def reset_password_with_otp(user_id, otp, new_password, user_type):
+    if user_id not in otp_store:
+        return jsonify({'message': 'No OTP request found or OTP expired'}), 400
+
+    stored_otp = otp_store[user_id]['otp']
+    expiry = otp_store[user_id]['expiry']
+
+    if time.time() > expiry:
+        del otp_store[user_id]
+        return jsonify({'message': 'OTP expired'}), 400
+
+    if int(otp) == stored_otp:
+        hashed_password = generate_password_hash(new_password)
+        table_name = "Users" if user_type == "user" else "Admin"
+        id_column = "user_id" if user_type == "user" else "admin_id"
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(f"UPDATE {table_name} SET password = ? WHERE {id_column} = ?", (hashed_password, user_id))
+        conn.commit()
+        conn.close()
+        
+        del otp_store[user_id]
+        return jsonify({'message': 'Password reset successful'}), 200
+    else:
+        return jsonify({'message': 'Invalid OTP'}), 400
+
+def get_user_by_id(user_id, user_type):
+    table_name = "Users" if user_type == "user" else "Admin"
+    id_column = "user_id" if user_type == "user" else "admin_id"
+    
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id, role FROM Users WHERE user_id = ?", (user_id,))
+    cursor.execute(f"SELECT {id_column}, role FROM {table_name} WHERE {id_column} = ?", (user_id,))
     user = cursor.fetchone()
     conn.close()
+    
     if user:
-        return user[0], user[1]
+        return user[id_column], user['role']
     return None, None
