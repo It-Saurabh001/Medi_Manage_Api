@@ -2,7 +2,7 @@ import sqlite3
 import time
 import random
 from werkzeug.security import check_password_hash, generate_password_hash
-from verification import send_email
+from verification import send_otp_email
 from flask import jsonify
 
 # NOTE: It's recommended to use a more persistent and scalable OTP store in a production environment, such as Redis or a database table.
@@ -30,16 +30,17 @@ def _get_user_by_email(email, user_type):
     return user
 
 def authenticate(email, password, user_type):
+    """Return (user_id, role) on success, or None on failure."""
     user = _get_user_by_email(email, user_type)
     if user and check_password_hash(user['password'], password):
         id_column = "user_id" if user_type == "user" else "admin_id"
         return user[id_column], user['role']
-    return None, None
+    return None
 
 def request_password_reset(email, user_type):
     user = _get_user_by_email(email, user_type)
     if not user:
-        return jsonify({'message': 'Email not registered'}), 404
+        return jsonify({'message': 'Email not registered','status': 404})
 
     id_column = "user_id" if user_type == "user" else "admin_id"
     user_id = user[id_column]
@@ -51,23 +52,26 @@ def request_password_reset(email, user_type):
     subject = "Your Password Reset OTP"
     body = f"Your OTP for password reset is: {otp}. It will expire in 5 minutes."
     
-    if send_email(to_email=email, subject=subject, body=body):
-        return jsonify({'message': 'OTP sent to your email', 'user_id': user_id}), 200
+    # send_otp_email returns True on success, False on failure
+    if send_otp_email(to_email=email, otp=otp):
+        return jsonify({'message': f'OTP {otp} sent to your email', 'user_id': user_id,'status': 200})
     else:
-        return jsonify({'message': 'Failed to send OTP email'}), 500
+        # Keep OTP in memory (debug) and inform the client the email failed
+        return jsonify({'message': 'Failed to send OTP email (check SMTP server). OTP has been logged on server for debugging.', 'user_id': user_id,'status': 500})
 
 def reset_password_with_otp(user_id, otp, new_password, user_type):
     if user_id not in otp_store:
-        return jsonify({'message': 'No OTP request found or OTP expired'}), 400
+        return jsonify({'message': 'No OTP request found or OTP expired','status': 400})
 
     stored_otp = otp_store[user_id]['otp']
     expiry = otp_store[user_id]['expiry']
 
     if time.time() > expiry:
         del otp_store[user_id]
-        return jsonify({'message': 'OTP expired'}), 400
+        return jsonify({'message': 'OTP expired','status': 400})
 
-    if int(otp) == stored_otp:
+    # Compare as strings to avoid type mismatch (stored_otp may be string)
+    if str(otp) == str(stored_otp):
         hashed_password = generate_password_hash(new_password)
         table_name = "Users" if user_type == "user" else "Admin"
         id_column = "user_id" if user_type == "user" else "admin_id"
@@ -79,9 +83,9 @@ def reset_password_with_otp(user_id, otp, new_password, user_type):
         conn.close()
         
         del otp_store[user_id]
-        return jsonify({'message': 'Password reset successful'}), 200
+        return jsonify({'message': 'Password reset successful','status': 200})
     else:
-        return jsonify({'message': 'Invalid OTP'}), 400
+        return jsonify({'message': 'Invalid OTP','status': 400})
 
 def get_user_by_id(user_id, user_type):
     table_name = "Users" if user_type == "user" else "Admin"

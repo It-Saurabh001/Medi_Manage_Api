@@ -46,7 +46,7 @@ def refresh_token():
     # Generate a new short-lived access token
     new_access_token = create_access_token(identity=admin_id)
     
-    return jsonify({"access_token": new_access_token})
+    return jsonify({"access_token": new_access_token,"status": 200})
 
 
 @app.route('/admin/create', methods=['POST'])
@@ -66,22 +66,23 @@ def create_admin():
 @app.route('/admin/login', methods = ['POST'])         # taking information from user that's why here post is used 
 def login_Admin():
     try:
-        email = request.form['email']           # requesting email from user
-        password = request.form['password']     # requesting password from user
-        auth_result = authenticate_admin(email=email, password=password)                   # for login email and password is necessary  
-        if auth_result:
-            admin_id, role = auth_result
-            # generate otp
-            otp = random.randint(100000, 999999)
-            expiry = time.time() + 300  # 5 minutes expiry
-            otp_store[admin_id] = {"otp": otp, "expiry": expiry}
+        email = request.form['email']
+        password = request.form['password']
+        auth_result = authenticate(email=email, password=password, user_type="admin")
 
-            # Send OTP via email (use your send_email or send_otp_email function)
-            send_otp_email(to_email=email, otp=otp)  # or send_otp_email(email, otp)
-            
-            return jsonify({'status':200, 'admin_id': admin_id, 'role': role, 'message': 'OTP sent to your email'})
-        else:
+        if not auth_result:
             return jsonify({'status':401,'message': 'Invalid email or password'})
+
+        admin_id, role = auth_result
+        # generate otp (use shared generator so OTP is a string)
+        otp = generate_otp()
+        expiry = time.time() + 300  # 5 minutes expiry
+        otp_store[admin_id] = {"otp": otp, "expiry": expiry}
+
+        # Send OTP via email
+        send_otp_email(to_email=email, otp=otp)
+
+        return jsonify({'status':200, 'admin_id': admin_id, 'role': role, 'message': 'OTP sent to your email'})
     except Exception as error:
         return jsonify({'message' : str(error), "status" : 400})
     
@@ -100,10 +101,11 @@ def verify_admin_otp():
             del otp_store[admin_id]
             return jsonify({'status' : 400, 'message': 'OTP expired'})
         
-        if int(otp) == stored_otp:
+        # compare as strings to avoid type issues
+        if str(otp) == str(stored_otp):
             # OTP correct → create JWT
             # You can store role from your database lookup or pass it along
-            _,role = authenticate_admin_by_id(admin_id)
+            _,role = get_user_by_id(admin_id, "admin")
             access_token = create_access_token(identity=admin_id,additional_claims={"role": role})
             refresh_token = create_refresh_token(identity=admin_id)
             
@@ -125,17 +127,47 @@ def get_All_Admins():
     except Exception as error:
         return jsonify({'admins':[],'message': str(error), 'status': 400})
 
+@app.route('/admin/requestAdminPasswordReset', methods=['POST'])
+def request_admin_password_reset():
+    try:
+        email = request.form['email']
+        response = request_password_reset(email, "admin")
+        return response
+    except Exception as error:
+        return jsonify({'status': 400, 'admin_id':None,'message': str(error)})
+    
+@app.route('/admin/resetAdminPasswordWithOtp', methods=['POST'])
+def reset_admin_password_with_otp():
+    try:
+        admin_id = request.form['admin_id']
+        otp = request.form['otp']
+        new_password = request.form['new_password']
+        response = reset_password_with_otp(admin_id, otp, new_password, "admin")
+        return response
+    except Exception as error:
+        return jsonify({'status': 400, 'message': str(error)})
+
+
 # these routes for create user 
 
 @app.route('/user/create', methods=['POST'])             # requesting information from user
 def create_user():
     try:
-        name = request.form['name']
-        password = request.form['password']
-        phoneNumber =  request.form['phoneNumber']
-        email = request.form['email']
-        pincode = request.form['pincode']
-        address = request.form['address']
+        # Use .get() instead of [] to make fields optional
+        name = request.form.get('name')
+        password = request.form.get('password')
+        phoneNumber =  request.form.get('phoneNumber')
+        email = request.form.get('email')
+        # Ye fields optional hain (agar user nahi dega to None jayega)
+        pincode = request.form.get('pincode')
+        address = request.form.get('address')
+        # Strict Validation: Name aur Password to chahiye hi
+        if not name or not password:
+            return jsonify({'message': 'Name and Password are mandatory', 'status': 400})
+
+        # Flexible Validation: Email YA Phone me se ek hona chahiye
+        if not email and not phoneNumber:
+            return jsonify({'message': 'Please provide either Email or Phone Number', 'status': 400})
         # request header for role
         role = "user" # default
         if request.headers.get("Admin") == "admin":
@@ -151,7 +183,7 @@ def create_user():
 def request_user_password_reset():
     try:
         email = request.form['email']
-        response = request_user_pswd_reset(email)
+        response = request_password_reset(email, "user")
         return response
     except Exception as error:
         return jsonify({'status': 400, 'message': str(error)})
@@ -162,46 +194,27 @@ def reset_user_password_with_otp():
         user_id = request.form['user_id']
         otp = request.form['otp']
         new_password = request.form['new_password']
-        response = reset_password_with_otp(user_id, otp, new_password)
+        response = reset_password_with_otp(user_id, otp, new_password, "user")
         return response
     except Exception as error:
         return jsonify({'status': 400, 'message': str(error)})
 
-@app.route('/admin/requestAdminPasswordReset', methods=['POST'])
-def request_admin_password_reset():
-    try:
-        email = request.form['email']
-        response = request_admin_pswd_reset(email)
-        return response
-    except Exception as error:
-        return jsonify({'status': 400, 'admin_id':None,'message': str(error)})
-    
-@app.route('/admin/resetAdminPasswordWithOtp', methods=['POST'])
-def reset_admin_password_with_otp():
-    try:
-        admin_id = request.form['admin_id']
-        otp = request.form['otp']
-        new_password = request.form['new_password']
-        response = reset_admin_pswd_with_otp(admin_id, otp, new_password)
-        return response
-    except Exception as error:
-        return jsonify({'status': 400, 'message': str(error)})
 
 @app.route('/user/login', methods=['POST'])
 def login_user():
     try:
         email = request.form['email']
         password = request.form['password']
-        auth_result = authenticate_user(email=email, password=password)
-        if auth_result:
-            user_id, role = auth_result
-            otp = random.randint(100000, 999999)
-            expiry = time.time() + 300  # 5 minutes expiry
-            user_otp_store[user_id] = {"otp": otp, "expiry": expiry}
-            send_otp_email(to_email=email, otp=otp)
-            return jsonify({ 'user_id': user_id, 'role': role, 'message': 'OTP sent to your email','status': 200})
-        else:
+        auth_result = authenticate(email=email, password=password, user_type="user")
+        if not auth_result:
             return jsonify({'user_id': None, 'message': 'Invalid email or password','status': 401})
+
+        user_id, role = auth_result
+        otp = generate_otp()
+        expiry = time.time() + 300  # 5 minutes expiry
+        user_otp_store[user_id] = {"otp": otp, "expiry": expiry}
+        send_otp_email(to_email=email, otp=otp)
+        return jsonify({ 'user_id': user_id, 'role': role, 'message': f'OTP {otp} sent to your email','status': 200})
     except Exception as error:
         return jsonify({'user_id': None,'message': str(error), "status": 400})
     
@@ -219,18 +232,19 @@ def verify_user_otp():
             del user_otp_store[user_id]
             return jsonify({'status': 400, 'message': 'OTP expired'})
 
-        if int(otp) == stored_otp:
+        # compare as strings
+        if str(otp) == str(stored_otp):
             # OTP correct → create JWT
             # Get role from DB if needed
-            _, role = authenticate_user_by_id(user_id)
+            _, role = get_user_by_id(user_id, "user")
             access_token = create_access_token(identity=user_id, additional_claims={"role": role})
             refresh_token = create_refresh_token(identity=user_id)
             del user_otp_store[user_id]
-            return jsonify({'status': 200, 'access_token': access_token, 'refresh_token': refresh_token, 'role': role})
+            return jsonify({'status': 200, 'message': 'OTP Verified Successfully','access_token': access_token, 'refresh_token': refresh_token, 'role': role})
         else:
-            return jsonify({'status': 400, 'message': 'Invalid OTP'})
+            return jsonify({'status': 400, 'message': 'Invalid OTP','access_token': None, 'refresh_token': None, 'role': "user"})
     except Exception as error:
-        return jsonify({'status': 400, 'message': str(error)})
+        return jsonify({'status': 400, 'message': str(error),'access_token': None, 'refresh_token': None, 'role': "user"})
 
 @app.route('/admin/getAllUsers', methods = ['GET'])           # GET method is used so that admin fetch all users 
 @role_required(["admin"])   # only admin can access

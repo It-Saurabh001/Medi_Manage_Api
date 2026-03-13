@@ -36,17 +36,28 @@ def createUser(name, password, phoneNumber, email, pincode, address,role):
         conn = sqlite3.connect("My_Medical_Shope.db")
         cursor = conn.cursor()
 
+        # 1. Check if Email already exists (Sirf tab check kare agar email diya ho)
+        if email:
+            cursor.execute('SELECT 1 FROM Users WHERE email = ?', (email,))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({'message': 'Email already registered', 'status': 409})
         # Check if email already exists
-        cursor.execute('SELECT 1 FROM Users WHERE email = ?', (email,))
-        if cursor.fetchone():
-            conn.close()
-            return jsonify({'message': 'Email already registered', 'status': 409})
+        if phoneNumber:
+            cursor.execute('SELECT 1 FROM Users WHERE phone_number = ?', (phoneNumber,))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify({'message': 'Phone number already registered', 'status': 409})
 
+        # Generate Data
         user_id = "UID"+str(uuid.uuid4().hex)[:8]        # generating user id in string
         date_of_Account_creation = date.today()     ## to assign date of creation
         
         # hasing password 
         hash_password = generate_password_hash(password)
+
+        # Insert Data (Jo values nahi mili wo NULL/None save hongi)
+        # Ensure 'pincode', 'address', 'email', 'phone_number' columns allow NULL in your DB schema
         cursor.execute('''
 INSERT INTO Users(user_id, password ,date_of_account_creation ,isApproved , block , name, address , email , phone_number ,pin_code,role) VALUES(?,?,?,?,?,?,?,?,?,?,?)
 ''', (user_id, hash_password, date_of_Account_creation, False, False, name, address, email, phoneNumber, pincode,role))
