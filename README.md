@@ -34,6 +34,7 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 - **Code Organization:** Modular Python files for operations (create, update, read, delete, authentication).
 
 **Design Highlights:**
+
 - Layered architecture separating routing, business logic, and database operations.
 - Use of UUID as unique identifiers for users and admins.
 - Try-catch blocks for robust error handling.
@@ -44,21 +45,25 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 ## Features
 
 ### User Management
+
 - User signup and login
 - Fetching single or all users
 - Approve, update, and delete users
 - Unique API key generation for users (column added via `/addApiKeyColumn`)
 
 ### Product Management
+
 - Add, fetch, update, and delete products
 - Fetch specific product by ID
 
 ### Order Management
+
 - Create orders
 - Fetch all orders or specific orders by user or ID
 - Approve, update, and delete orders
 
 ### Inventory & Sales
+
 - Manage available products and their categories
 - Record and fetch sales history (by user, product, or total)
 
@@ -69,6 +74,7 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 > **Note:** All endpoints use JSON for request/response unless otherwise specified.
 
 ### User Endpoints
+
 - `POST /createUser` - Register a new user
 - `POST /login` - User authentication
 - `GET /getAllUsers` - Fetch all users (admin)
@@ -78,6 +84,7 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 - `POST /deleteUser` - Delete a user
 
 ### Product Endpoints
+
 - `POST /addProduct` - Add a new product
 - `GET /getAppProducts` - Fetch all products
 - `POST /getSpecificProduct` - Fetch product by ID
@@ -85,6 +92,7 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 - `POST /deleteProduct` - Delete a product
 
 ### Order Endpoints
+
 - `POST /createOrder` - Create a new order
 - `GET /getAllOrders` - Fetch all orders
 - `POST /getUserOrders` - Fetch orders for a user
@@ -94,12 +102,14 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 - `POST /deleteOrder` - Delete an order
 
 ### Sales & Inventory
+
 - `POST /recordSell` - Record a product sale
 - `GET /getSellHistory` - Fetch all sales history
 - `POST /getusersellhistory` - Fetch sales history for a user
 - `POST /getproductsellhistory` - Fetch sales history for a product
 
 ### Utility
+
 - `GET /addApiKeyColumn` - Add API key column to users table (one-time setup)
 - `GET /dox` - Simple HTML documentation endpoint
 
@@ -108,12 +118,14 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 ## Database Schema
 
 **Main Tables:**
+
 - `Users`: Stores user information, approval status, API key
 - `Products`: Stores product details
 - `Orders`: Stores order details, links to users and products
 - `SellHistory`: Tracks sales by user and product
 
 **Operations:**
+
 - All database operations use a cursor for transaction management.
 - Commit and close connections after each operation to ensure data integrity.
 
@@ -143,20 +155,24 @@ Medi_Manage_Api is designed to manage the operations of a medical shop, includin
 ## Getting Started
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/It-Saurabh001/Medi_Manage_Api.git
    cd Medi_Manage_Api
    ```
 
 2. **Install dependencies:**
+
    ```bash
    pip install flask
    ```
 
 3. **Run the app:**
+
    ```bash
    python main.py
    ```
+
    - The server will run in debug mode on localhost.
 
 4. **Setup Database:**
