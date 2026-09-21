@@ -52,3 +52,13 @@ these are the steps to be followed for user
 ->all user fetch           [working]
 ->update user 
 ->delete user
+
+
+
+
+python -m aiosmtpd -n -l localhost:1025
+
+
+
+
+Vivi1, vivi1@gmail.com, 5645563456, vivi1@1234

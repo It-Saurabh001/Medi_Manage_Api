@@ -69,14 +69,14 @@ INSERT INTO Users(user_id, password ,date_of_account_creation ,isApproved , bloc
     except Exception as error:
         return jsonify({'message': str(error), "status": 400})
     
-def addProduct(name, price, category, stock):
+def addProduct(name, price, category, stock, image_url=None):
     try: 
         conn = sqlite3.connect("My_Medical_Shope.db")
         cursor = conn.cursor()
         Product_id = "PROD_"+str(uuid.uuid4().hex)[:8]        # generating user id in string
         cursor.execute('''
-INSERT INTO Products(Product_id, name, price, category, stock) VALUES(?,?,?,?,?)
-''', (Product_id, name, price, category, stock))
+INSERT INTO Products(Product_id, name, price, category, stock, image_url) VALUES(?,?,?,?,?,?)
+''', (Product_id, name, price, category, stock, image_url))
         conn.commit()
         conn.close()
         return jsonify({'message': Product_id, 'status': 200})

@@ -95,6 +95,8 @@ def update_product(Product_id, updateProduct : dict):
                 cursor.execute('UPDATE Products SET category = ? WHERE Product_id = ?', (value, Product_id))
             elif key == 'stock':
                 cursor.execute('UPDATE Products SET stock = ? WHERE Product_id = ?', (value, Product_id))
+            elif key == 'image_url':
+                cursor.execute('UPDATE Products SET image_url = ? WHERE Product_id = ?', (value, Product_id))
 
         conn.commit()
         conn.close()

@@ -24,7 +24,12 @@ def updateTable():
     try:
         cursor.execute("ALTER TABLE Admin ADD COLUMN role VARCHAR(20) DEFAULT 'admin'")
     except sqlite3.OperationalError:
-        print("Column sold alerady exists in Order_Details table")
+        print("Column role already exists in Admin table")
+
+    try:
+        cursor.execute("ALTER TABLE Products ADD COLUMN image_url VARCHAR(1000) DEFAULT NULL")
+    except sqlite3.OperationalError:
+        print("Column image_url already exists in Products table")
 
    
     conn.commit()
@@ -83,7 +88,8 @@ CREATE TABLE IF NOT EXISTS Products(
                    name VARCHAR(255),
                    price FLOAT,
                    category VARCHAR(255),
-                   stock INTEGER(255)
+                   stock INTEGER(255),
+                   image_url VARCHAR(1000) DEFAULT NULL
                    )
 ''')
 

@@ -94,7 +94,8 @@ def getAllProducts():
             "name": product[2],
             "price": product[3],
             "category": product[4],
-            "stock": product[5]
+            "stock": product[5],
+            "image_url": product[6] if len(product) > 6 else None
         }
         productJson.append(tempProduct)             # i can call this json in tempproduct directly not in userjson
     return productJson               # no change in database thus no use of commit
@@ -107,13 +108,16 @@ def getspecificproduct(Product_id):
     cursor.execute("SELECT * FROM Products WHERE Product_id = ?",(Product_id,))       # after userId use , "comma" so that it can understand as tuple
     product = cursor.fetchone()
     conn.close()
+    if product is None:
+        return None
     tempProduct = {
             "id": product[0],
             "Product_id":product[1],
             "name": product[2],
             "price": product[3],
             "category": product[4],
-            "stock": product[5]
+            "stock": product[5],
+            "image_url": product[6] if len(product) > 6 else None
         }
    
     return tempProduct

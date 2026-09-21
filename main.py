@@ -5,7 +5,7 @@ from auth_user import *
 from updateOperation import *
 from readOperation import *
 from deleteOperation import *
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, create_refresh_token
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, create_refresh_token, get_jwt
 from role_required import *
 from datetime import timedelta
 import random,time
@@ -14,6 +14,22 @@ from otp_store import *
 
 
 
+import os
+from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
+
+# Load environment variables
+load_dotenv()
+
+# Configure Cloudinary
+cloudinary.config(
+  cloud_name = os.getenv('CLOUDINARY_CLOUD_NAME'),
+  api_key = os.getenv('CLOUDINARY_API_KEY'),
+  api_secret = os.getenv('CLOUDINARY_API_SECRET'),
+  secure = True
+)
+
 # here we are using flask library need to create an instance 
 
 app = Flask(__name__)  
@@ -21,6 +37,7 @@ app = Flask(__name__)
 
 app.config['JWT_SECRET_KEY'] = 'your-secret-key'  # use a strong secret in production
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)  
 jwt = JWTManager(app)
 
 
@@ -41,15 +58,25 @@ def hello_world():
 @app.route('/admin/refreshToken', methods=['POST'])
 @jwt_required(refresh=True)
 def refresh_token():
-    admin_id = get_jwt_identity()
-    
-    # Generate a new short-lived access token
-    new_access_token = create_access_token(identity=admin_id)
-    
-    return jsonify({"access_token": new_access_token,"status": 200})
+    try:
+        admin_id = get_jwt_identity()
+        claims = get_jwt()
+        role = claims.get("role")
+        new_access_token = create_access_token(identity=admin_id, additional_claims={"role":role})
+        new_refresh_token = create_refresh_token(identity=admin_id,additional_claims={"role":role})
+        
+        return jsonify({
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "status": 200,
+            "message": "Token refreshed successfully"
+        }), 200
+    except Exception as error:
+        return jsonify({"message": str(error), "status": 401}), 401
 
 
 @app.route('/admin/create', methods=['POST'])
+@role_required(["admin"])  
 def create_admin():
     try:
         email = request.form['email']
@@ -107,11 +134,11 @@ def verify_admin_otp():
             # You can store role from your database lookup or pass it along
             _,role = get_user_by_id(admin_id, "admin")
             access_token = create_access_token(identity=admin_id,additional_claims={"role": role})
-            refresh_token = create_refresh_token(identity=admin_id)
+            refresh_token = create_refresh_token(identity=admin_id,additional_claims={"role":role})
             
             #remove otp from store
             del otp_store[admin_id]
-            return jsonify({'status' : 200, 'access_token': access_token, 'refresh_token': refresh_token, 'role':role})
+            return jsonify({'status' : 200, 'message': 'OTP verified successfully','access_token': access_token, 'refresh_token': refresh_token, 'role':role})
         else:
             return jsonify({'status' : 400, 'message': 'Invalid OTP'})
     except Exception as error:
@@ -238,7 +265,7 @@ def verify_user_otp():
             # Get role from DB if needed
             _, role = get_user_by_id(user_id, "user")
             access_token = create_access_token(identity=user_id, additional_claims={"role": role})
-            refresh_token = create_refresh_token(identity=user_id)
+            refresh_token = create_refresh_token(identity=user_id,additional_claims={"role":role})
             del user_otp_store[user_id]
             return jsonify({'status': 200, 'message': 'OTP Verified Successfully','access_token': access_token, 'refresh_token': refresh_token, 'role': role})
         else:
@@ -357,7 +384,15 @@ def add_product():
         category = request.form['category']
         stock = int(request.form['stock'])
 
-        response = addProduct(name=name, price=price, category=category, stock=stock)  # function to add product in database
+        # Handle optional image file upload to Cloudinary
+        image_url = None
+        if 'image' in request.files:
+            file = request.files['image']
+            if file.filename != '':
+                upload_result = cloudinary.uploader.upload(file)
+                image_url = upload_result.get("secure_url")
+
+        response = addProduct(name=name, price=price, category=category, stock=stock, image_url=image_url)  # function to add product in database
         return response
     except Exception as error:
         return jsonify({"message": str(error), 'status': 400})
@@ -394,6 +429,14 @@ def update__product():
         for key , value in request.form.items():
             if key != 'Product_id':
                 updateProduct[key] = value
+
+        # Handle optional new image upload to Cloudinary
+        if 'image' in request.files:
+            file = request.files['image']
+            if file.filename != '':
+                upload_result = cloudinary.uploader.upload(file)
+                updateProduct['image_url'] = upload_result.get("secure_url")
+
         response = update_product(Product_id= Product_id, updateProduct= updateProduct)  # function to update product in database
         return response     
     except Exception as error:
@@ -574,11 +617,14 @@ def delete_sell_history():
 
 if __name__ == '__main__':
 
-    # updateTable()
+    updateTable()
     createTable()
     # migrate_passwords()
 
     # app.run( debug=True)
-    app.run( host="0.0.0.0",port=5000,debug=True)
+    # use_reloader=False prevents Werkzeug from forking a child process that
+    # would wipe the in-memory otp_store between login and OTP verification.
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+
 
 
