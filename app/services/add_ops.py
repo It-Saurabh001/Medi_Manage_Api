@@ -18,7 +18,7 @@ def createAdmin(email, name, password, phoneNumber, role):
                 return {'message': 'Email already registered', 'status': 409}
 
             admin_id = "AID" + str(uuid.uuid4().hex)[:8]
-            date_of_creation = date.today()
+            date_of_creation = date.today().isoformat()
             hashpassword = generate_password_hash(password)
             cursor.execute('''
 INSERT INTO Admin(admin_id, password, name, email, phone_number, date_of_account_creation, role) VALUES(?,?,?,?,?,?,?)
@@ -45,7 +45,7 @@ def createUser(name, password, phoneNumber, email, pincode, address, role):
                     return {'message': 'Phone number already registered', 'status': 409}
 
             user_id = "UID" + str(uuid.uuid4().hex)[:8]
-            date_of_creation = date.today()
+            date_of_creation = date.today().isoformat()
             hash_password = generate_password_hash(password)
 
             cursor.execute('''
@@ -79,7 +79,7 @@ def createOrder(user_id, Product_id, quantity, message=""):
         with conn:
             cursor = conn.cursor()
             order_id = "ORD" + str(uuid.uuid4().hex)[:8]
-            date_of_order_creation = date.today()
+            date_of_order_creation = date.today().isoformat()
 
             cursor.execute('SELECT name, price, category FROM Products WHERE Product_id = ?', (Product_id,))
             product = cursor.fetchone()
@@ -144,7 +144,7 @@ def record_Sell(Order_id):
             cursor.execute('''
 INSERT INTO Sell_History(Sell_id, product_id, Order_id, isApproved, quantity, Remaining_stock, date_of_sell, total_amount, price, product_name, user_id, user_name)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-''', (Sell_id, Product_id, Order_id, isApproved, quantity, Remaining_stock, date.today(), total_amount, price, product_name, user_id, user_name))
+''', (Sell_id, Product_id, Order_id, isApproved, quantity, Remaining_stock, date.today().isoformat(), total_amount, price, product_name, user_id, user_name))
 
         return {'message': Sell_id, 'status': 201}
     except Exception as error:

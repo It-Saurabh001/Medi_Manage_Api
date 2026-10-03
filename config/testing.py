@@ -7,7 +7,7 @@ class TestingConfig(BaseConfig):
 
     SECRET_KEY = "test-secret-key-testing-only"
     JWT_SECRET_KEY = "test-jwt-secret-key-testing-only"
-    DATABASE_NAME = ":memory:"
+    DATABASE_NAME = os.getenv("TEST_DATABASE_NAME", "test_medical_shop.db")
 
     EMAIL_PROVIDER = "dev"
     OTP_STORE_PROVIDER = "dev"

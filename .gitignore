@@ -23,6 +23,10 @@ _archive/
 *.log
 app.log
 
+# Test & coverage artifacts
+.coverage
+.pytest_cache/
+
 # Analysis artifacts
 project_analysis.md
 project_details.md

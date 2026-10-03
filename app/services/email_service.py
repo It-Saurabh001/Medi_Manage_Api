@@ -1,7 +1,7 @@
-import os
 import random
-from flask import current_app, has_app_context
+from flask import has_app_context
 from app.extensions import get_current_email_sender
+from app.integrations.email.factory import get_email_sender
 
 def generate_otp() -> str:
     """Generate a 6-digit numeric OTP string."""
@@ -14,12 +14,11 @@ def send_otp_email(to_email: str, otp: str) -> bool:
 
     if has_app_context():
         sender = get_current_email_sender()
-        return sender.send(to=to_email, subject=subject, body=body)
     else:
-        # Fallback for standalone script/debug invocation
-        from app.integrations.email.dev.smtp_debug_sender import SmtpDebugSender
-        sender = SmtpDebugSender()
-        return sender.send(to=to_email, subject=subject, body=body)
+        # Fallback via factory (lazy importlib)
+        sender = get_email_sender({"EMAIL_PROVIDER": "dev", "DEBUG": True})
+
+    return sender.send(to=to_email, subject=subject, body=body)
 
 def send_email(to_email: str, otp: str) -> bool:
     """Backward compatibility alias for send_otp_email."""
