@@ -3,7 +3,7 @@ import importlib
 def get_otp_store(config):
     """Factory selecting and instantiating the OTP store provider using importlib."""
     provider = config.get("OTP_STORE_PROVIDER", "dev").lower()
-    is_prod = config.get("FLASK_ENV") == "production" or not config.get("DEBUG", True)
+    is_prod = (config.get("FLASK_ENV") == "production" or not config.get("DEBUG", True)) and not config.get("TESTING", False)
 
     if is_prod and provider == "dev":
         raise RuntimeError("Cannot use development OTP store in production environment")

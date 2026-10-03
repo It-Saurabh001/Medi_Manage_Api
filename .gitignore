@@ -1,4 +1,28 @@
+# Environment & secrets
 .env
 
+# Virtual environment
+.venv/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Database
+*.db
+
+# IDE and editor files
+.vscode/
+.idea/
+
+# Archived legacy code
+_archive/
+
+# Logs
+*.log
+app.log
+
+# Analysis artifacts
 project_analysis.md
 project_details.md

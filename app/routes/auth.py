@@ -46,7 +46,7 @@ def login_Admin():
         auth_result = authenticate(email=email, password=password, user_type="admin")
 
         if not auth_result:
-            return jsonify({"status": 401, "message": "Invalid email or password"})
+            return jsonify({"status": 401, "message": "Invalid email or password"}), 401
 
         admin_id, role = auth_result
         otp = generate_otp()
@@ -55,9 +55,9 @@ def login_Admin():
 
         send_otp_email(to_email=email, otp=otp)
 
-        return jsonify({"status": 200, "admin_id": admin_id, "role": role, "message": "OTP sent to your email"})
+        return jsonify({"status": 200, "admin_id": admin_id, "role": role, "message": "OTP sent to your email"}), 200
     except Exception as error:
-        return jsonify({"message": str(error), "status": 400})
+        return jsonify({"message": str(error), "status": 400}), 400
 
 @auth_bp.route("/admin/verifyOtp", methods=["POST"])
 def verify_admin_otp():
@@ -65,13 +65,13 @@ def verify_admin_otp():
         admin_id = request.form["admin_id"]
         otp = request.form["otp"]
         if admin_id not in otp_store:
-            return jsonify({"status": 400, "message": "No OTP request found "})
+            return jsonify({"status": 400, "message": "No OTP request found "}), 400
         stored_otp = otp_store[admin_id]["otp"]
         expiry = otp_store[admin_id]["expiry"]
 
         if time.time() > expiry:
             del otp_store[admin_id]
-            return jsonify({"status": 400, "message": "OTP expired"})
+            return jsonify({"status": 400, "message": "OTP expired"}), 400
 
         if str(otp) == str(stored_otp):
             _, role = get_user_by_id(admin_id, "admin")
@@ -85,20 +85,21 @@ def verify_admin_otp():
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "role": role
-            })
+            }), 200
         else:
-            return jsonify({"status": 400, "message": "Invalid OTP"})
+            return jsonify({"status": 400, "message": "Invalid OTP"}), 400
     except Exception as error:
-        return jsonify({"status": 400, "message": str(error)})
+        return jsonify({"status": 400, "message": str(error)}), 400
 
 @auth_bp.route("/admin/requestAdminPasswordReset", methods=["POST"])
 def request_admin_password_reset():
     try:
         email = request.form["email"]
-        response = request_password_reset(email, "admin")
-        return response
+        res = request_password_reset(email, "admin")
+        code = res.get("status", 200) if isinstance(res, dict) else 200
+        return jsonify(res), code
     except Exception as error:
-        return jsonify({"status": 400, "admin_id": None, "message": str(error)})
+        return jsonify({"status": 400, "admin_id": None, "message": str(error)}), 400
 
 @auth_bp.route("/admin/resetAdminPasswordWithOtp", methods=["POST"])
 def reset_admin_password_with_otp():
@@ -106,10 +107,11 @@ def reset_admin_password_with_otp():
         admin_id = request.form["admin_id"]
         otp = request.form["otp"]
         new_password = request.form["new_password"]
-        response = reset_password_with_otp(admin_id, otp, new_password, "admin")
-        return response
+        res = reset_password_with_otp(admin_id, otp, new_password, "admin")
+        code = res.get("status", 200) if isinstance(res, dict) else 200
+        return jsonify(res), code
     except Exception as error:
-        return jsonify({"status": 400, "message": str(error)})
+        return jsonify({"status": 400, "message": str(error)}), 400
 
 @auth_bp.route("/user/login", methods=["POST"])
 def login_user():
@@ -118,16 +120,16 @@ def login_user():
         password = request.form["password"]
         auth_result = authenticate(email=email, password=password, user_type="user")
         if not auth_result:
-            return jsonify({"user_id": None, "message": "Invalid email or password", "status": 401})
+            return jsonify({"user_id": None, "message": "Invalid email or password", "status": 401}), 401
 
         user_id, role = auth_result
         otp = generate_otp()
         expiry = time.time() + 300
         user_otp_store[user_id] = {"otp": otp, "expiry": expiry}
         send_otp_email(to_email=email, otp=otp)
-        return jsonify({"user_id": user_id, "role": role, "message": f"OTP {otp} sent to your email", "status": 200})
+        return jsonify({"user_id": user_id, "role": role, "message": f"OTP {otp} sent to your email", "status": 200}), 200
     except Exception as error:
-        return jsonify({"user_id": None, "message": str(error), "status": 400})
+        return jsonify({"user_id": None, "message": str(error), "status": 400}), 400
 
 @auth_bp.route("/user/verifyUserOtp", methods=["POST"])
 def verify_user_otp():
@@ -135,13 +137,13 @@ def verify_user_otp():
         user_id = request.form["user_id"]
         otp = request.form["otp"]
         if user_id not in user_otp_store:
-            return jsonify({"status": 400, "message": "No OTP request found"})
+            return jsonify({"status": 400, "message": "No OTP request found"}), 400
         stored_otp = user_otp_store[user_id]["otp"]
         expiry = user_otp_store[user_id]["expiry"]
 
         if time.time() > expiry:
             del user_otp_store[user_id]
-            return jsonify({"status": 400, "message": "OTP expired"})
+            return jsonify({"status": 400, "message": "OTP expired"}), 400
 
         if str(otp) == str(stored_otp):
             _, role = get_user_by_id(user_id, "user")
@@ -154,7 +156,7 @@ def verify_user_otp():
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "role": role
-            })
+            }), 200
         else:
             return jsonify({
                 "status": 400,
@@ -162,7 +164,7 @@ def verify_user_otp():
                 "access_token": None,
                 "refresh_token": None,
                 "role": "user"
-            })
+            }), 400
     except Exception as error:
         return jsonify({
             "status": 400,
@@ -170,16 +172,17 @@ def verify_user_otp():
             "access_token": None,
             "refresh_token": None,
             "role": "user"
-        })
+        }), 400
 
 @auth_bp.route("/user/requestUserPasswordReset", methods=["POST"])
 def request_user_password_reset():
     try:
         email = request.form["email"]
-        response = request_password_reset(email, "user")
-        return response
+        res = request_password_reset(email, "user")
+        code = res.get("status", 200) if isinstance(res, dict) else 200
+        return jsonify(res), code
     except Exception as error:
-        return jsonify({"status": 400, "message": str(error)})
+        return jsonify({"status": 400, "message": str(error)}), 400
 
 @auth_bp.route("/user/resetUserPasswordWithOtp", methods=["POST"])
 def reset_user_password_with_otp():
@@ -187,7 +190,8 @@ def reset_user_password_with_otp():
         user_id = request.form["user_id"]
         otp = request.form["otp"]
         new_password = request.form["new_password"]
-        response = reset_password_with_otp(user_id, otp, new_password, "user")
-        return response
+        res = reset_password_with_otp(user_id, otp, new_password, "user")
+        code = res.get("status", 200) if isinstance(res, dict) else 200
+        return jsonify(res), code
     except Exception as error:
-        return jsonify({"status": 400, "message": str(error)})
+        return jsonify({"status": 400, "message": str(error)}), 400

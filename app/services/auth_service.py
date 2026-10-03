@@ -1,100 +1,111 @@
+import os
 import sqlite3
 import time
-import random
 from werkzeug.security import check_password_hash, generate_password_hash
-from app.services.email_service import send_otp_email
-from app.services.otp_service import otp_store
-from flask import jsonify
+from app.services.email_service import send_otp_email, generate_otp
+from app.services.otp_service import store_otp, verify_and_consume_otp, otp_store
 
-# NOTE: Database connection should be managed in a central place, for example, using Flask's application context.
-# This is a simplified example.
+QUERIES = {
+    "user": {
+        "by_email": "SELECT user_id, password, role FROM Users WHERE email = ?",
+        "by_id": "SELECT user_id, role FROM Users WHERE user_id = ?",
+        "update_pw": "UPDATE Users SET password = ? WHERE user_id = ?",
+        "id_col": "user_id"
+    },
+    "admin": {
+        "by_email": "SELECT admin_id, password, role FROM Admin WHERE email = ?",
+        "by_id": "SELECT admin_id, role FROM Admin WHERE admin_id = ?",
+        "update_pw": "UPDATE Admin SET password = ? WHERE admin_id = ?",
+        "id_col": "admin_id"
+    }
+}
+
 def get_db_connection():
-    conn = sqlite3.connect("My_Medical_Shope.db")
+    db_name = os.getenv("DATABASE_NAME", "My_Medical_Shope.db")
+    conn = sqlite3.connect(db_name)
     conn.row_factory = sqlite3.Row
     return conn
 
-def generate_otp():
-    return str(random.randint(100000, 999999))
-
 def _get_user_by_email(email, user_type):
-    table_name = "Users" if user_type == "user" else "Admin"
-    id_column = "user_id" if user_type == "user" else "admin_id"
-    
+    if user_type not in QUERIES:
+        return None
+    query = QUERIES[user_type]["by_email"]
+
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT {id_column}, password, role FROM {table_name} WHERE email = ?", (email,))
-    user = cursor.fetchone()
-    conn.close()
-    return user
+    try:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (email,))
+            return cursor.fetchone()
+    finally:
+        conn.close()
 
 def authenticate(email, password, user_type):
     """Return (user_id, role) on success, or None on failure."""
     user = _get_user_by_email(email, user_type)
-    if user and check_password_hash(user['password'], password):
-        id_column = "user_id" if user_type == "user" else "admin_id"
-        return user[id_column], user['role']
+    if user and check_password_hash(user["password"], password):
+        id_column = QUERIES[user_type]["id_col"]
+        return user[id_column], user["role"]
     return None
 
 def request_password_reset(email, user_type):
     user = _get_user_by_email(email, user_type)
     if not user:
-        return jsonify({'message': 'Email not registered','status': 404})
+        return {"message": "Email not registered", "status": 404}
 
-    id_column = "user_id" if user_type == "user" else "admin_id"
+    id_column = QUERIES[user_type]["id_col"]
     user_id = user[id_column]
-    
-    otp = generate_otp()
-    expiry = time.time() + 300  # 5 minutes
-    otp_store[user_id] = {"otp": otp, "expiry": expiry}
 
-    subject = "Your Password Reset OTP"
-    body = f"Your OTP for password reset is: {otp}. It will expire in 5 minutes."
-    
-    # send_otp_email returns True on success, False on failure
+    otp = generate_otp()
+    otp_store[user_id] = {"otp": otp, "expiry": time.time() + 300}
+
     if send_otp_email(to_email=email, otp=otp):
-        return jsonify({'message': f'OTP {otp} sent to your email', 'user_id': user_id,'status': 200})
+        return {"message": f"OTP {otp} sent to your email", "user_id": user_id, "status": 200}
     else:
-        # Keep OTP in memory (debug) and inform the client the email failed
-        return jsonify({'message': 'Failed to send OTP email (check SMTP server). OTP has been logged on server for debugging.', 'user_id': user_id,'status': 500})
+        return {"message": "Failed to send OTP email (check SMTP server).", "user_id": user_id, "status": 500}
 
 def reset_password_with_otp(user_id, otp, new_password, user_type):
     if user_id not in otp_store:
-        return jsonify({'message': 'No OTP request found or OTP expired','status': 400})
+        return {"message": "No OTP request found or OTP expired", "status": 400}
 
-    stored_otp = otp_store[user_id]['otp']
-    expiry = otp_store[user_id]['expiry']
+    stored_otp = otp_store[user_id]["otp"]
+    expiry = otp_store[user_id]["expiry"]
 
     if time.time() > expiry:
         del otp_store[user_id]
-        return jsonify({'message': 'OTP expired','status': 400})
+        return {"message": "OTP expired", "status": 400}
 
-    # Compare as strings to avoid type mismatch (stored_otp may be string)
     if str(otp) == str(stored_otp):
         hashed_password = generate_password_hash(new_password)
-        table_name = "Users" if user_type == "user" else "Admin"
-        id_column = "user_id" if user_type == "user" else "admin_id"
+        query = QUERIES[user_type]["update_pw"]
 
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"UPDATE {table_name} SET password = ? WHERE {id_column} = ?", (hashed_password, user_id))
-        conn.commit()
-        conn.close()
-        
+        try:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(query, (hashed_password, user_id))
+        finally:
+            conn.close()
+
         del otp_store[user_id]
-        return jsonify({'message': 'Password reset successful','status': 200})
+        return {"message": "Password reset successful", "status": 200}
     else:
-        return jsonify({'message': 'Invalid OTP','status': 400})
+        return {"message": "Invalid OTP", "status": 400}
 
 def get_user_by_id(user_id, user_type):
-    table_name = "Users" if user_type == "user" else "Admin"
-    id_column = "user_id" if user_type == "user" else "admin_id"
-    
+    if user_type not in QUERIES:
+        return None, None
+    query = QUERIES[user_type]["by_id"]
+
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT {id_column}, role FROM {table_name} WHERE {id_column} = ?", (user_id,))
-    user = cursor.fetchone()
-    conn.close()
-    
-    if user:
-        return user[id_column], user['role']
-    return None, None
+    try:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (user_id,))
+            user = cursor.fetchone()
+            if user:
+                id_column = QUERIES[user_type]["id_col"]
+                return user[id_column], user["role"]
+            return None, None
+    finally:
+        conn.close()
