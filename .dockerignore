@@ -1,0 +1,31 @@
+# Version control
+.git/
+.gitignore
+
+# Virtual environment & python cache
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local secrets & databases
+.env
+*.db
+
+# Dev-only implementations and scripts
+app/integrations/email/dev/
+app/integrations/otp_store/dev/
+scripts/dev/
+
+# Tests & test artifacts
+tests/
+.coverage
+.pytest_cache/
+
+# Legacy and documentation archives
+_archive/
+docs/
+project_analysis.md
+project_details.md
+.vscode/
+.idea/
