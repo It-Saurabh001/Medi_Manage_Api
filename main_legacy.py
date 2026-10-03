@@ -27,14 +27,11 @@ cloudinary.config(
   secure = True
 )
 
-# here we are using flask library need to create an instance 
+from config import get_config
 
 app = Flask(__name__, template_folder='app/templates')  
-        # flask instance created succesfully 
-
-app.config['JWT_SECRET_KEY'] = 'your-secret-key'  # use a strong secret in production
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
-app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)  
+config_class = get_config()
+app.config.from_object(config_class)
 jwt = JWTManager(app)
 
 
