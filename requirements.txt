@@ -1,8 +1,1 @@
-fastapi
-uvicorn
-gunicorn
-flask
-flask-jwt-extended
-cloudinary
-python-dotenv
-
+-r requirements/dev.txt

@@ -3,10 +3,8 @@ import time
 import random
 from werkzeug.security import check_password_hash, generate_password_hash
 from app.services.email_service import send_otp_email
+from app.services.otp_service import otp_store
 from flask import jsonify
-
-# NOTE: It's recommended to use a more persistent and scalable OTP store in a production environment, such as Redis or a database table.
-otp_store = {}
 
 # NOTE: Database connection should be managed in a central place, for example, using Flask's application context.
 # This is a simplified example.
