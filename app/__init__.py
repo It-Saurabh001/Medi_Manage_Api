@@ -3,7 +3,7 @@ from config import get_config
 from app.extensions import init_extensions
 from app.logging_config import configure_logging
 from app.errors import register_error_handlers
-from app.routes.health import health_bp
+from app.routes import register_blueprints
 
 def create_app(config_name=None):
     """Application factory for Medi_Manage_Api."""
@@ -31,7 +31,7 @@ def create_app(config_name=None):
     # Register centralized error handlers
     register_error_handlers(app)
 
-    # Register foundational routes
-    app.register_blueprint(health_bp)
+    # Register all application blueprints
+    register_blueprints(app)
 
     return app
