@@ -11,9 +11,6 @@ from datetime import timedelta
 import random,time
 from verification import*
 from otp_store import *
-
-
-
 import os
 from dotenv import load_dotenv
 import cloudinary
@@ -68,6 +65,7 @@ def refresh_token():
         return jsonify({
             "access_token": new_access_token,
             "refresh_token": new_refresh_token,
+            "role":role,
             "status": 200,
             "message": "Token refreshed successfully"
         }), 200
@@ -434,7 +432,7 @@ def update__product():
         if 'image' in request.files:
             file = request.files['image']
             if file.filename != '':
-                upload_result = cloudinary.uploader.upload(file)
+                upload_result = cloudinary.uploader.upload(file,folder="MediAdminApp/Products")
                 updateProduct['image_url'] = upload_result.get("secure_url")
 
         response = update_product(Product_id= Product_id, updateProduct= updateProduct)  # function to update product in database
