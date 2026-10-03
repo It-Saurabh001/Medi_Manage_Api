@@ -2,7 +2,7 @@ import sqlite3
 import time
 import random
 from werkzeug.security import check_password_hash, generate_password_hash
-from verification import send_otp_email
+from app.services.email_service import send_otp_email
 from flask import jsonify
 
 # NOTE: It's recommended to use a more persistent and scalable OTP store in a production environment, such as Redis or a database table.

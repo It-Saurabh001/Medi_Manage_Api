@@ -1,16 +1,16 @@
-from flask import Flask,jsonify,request,render_template
-from createTableOperation import *
-from addOperation import *
-from auth_user import *
-from updateOperation import *
-from readOperation import *
-from deleteOperation import *
+from flask import Flask, jsonify, request, render_template
+from app.services.db_init import *
+from app.services.add_ops import *
+from app.services.auth_service import *
+from app.services.update_ops import *
+from app.services.read_ops import *
+from app.services.delete_ops import *
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, create_refresh_token, get_jwt
-from role_required import *
+from app.utils.decorators import *
 from datetime import timedelta
-import random,time
-from verification import*
-from otp_store import *
+import random, time
+from app.services.email_service import *
+from app.services.otp_service import *
 import os
 from dotenv import load_dotenv
 import cloudinary
@@ -29,7 +29,7 @@ cloudinary.config(
 
 # here we are using flask library need to create an instance 
 
-app = Flask(__name__)  
+app = Flask(__name__, template_folder='app/templates')  
         # flask instance created succesfully 
 
 app.config['JWT_SECRET_KEY'] = 'your-secret-key'  # use a strong secret in production
