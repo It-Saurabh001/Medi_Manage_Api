@@ -8,7 +8,7 @@ def get_db():
     db_name = os.getenv("DATABASE_NAME", "My_Medical_Shope.db")
     return sqlite3.connect(db_name)
 
-def createAdmin(email, name, password, phoneNumber, role):
+def createAdmin(email, name, password, phoneNumber, role, image_url=None):
     conn = get_db()
     try:
         with conn:
@@ -21,8 +21,8 @@ def createAdmin(email, name, password, phoneNumber, role):
             date_of_creation = date.today().isoformat()
             hashpassword = generate_password_hash(password)
             cursor.execute('''
-INSERT INTO Admin(admin_id, password, name, email, phone_number, date_of_account_creation, role) VALUES(?,?,?,?,?,?,?)
-''', (admin_id, hashpassword, name, email, phoneNumber, date_of_creation, role))
+INSERT INTO Admin(admin_id, password, name, email, phone_number, date_of_account_creation, role, image_url) VALUES(?,?,?,?,?,?,?,?)
+''', (admin_id, hashpassword, name, email, phoneNumber, date_of_creation, role, image_url))
 
         return {'message': f"Admin created with role {role} and admin id = ${admin_id} ", 'status': 201}
     except Exception as error:
@@ -30,7 +30,7 @@ INSERT INTO Admin(admin_id, password, name, email, phone_number, date_of_account
     finally:
         conn.close()
 
-def createUser(name, password, phoneNumber, email, pincode, address, role):
+def createUser(name, password, phoneNumber, email, pincode, address, role, image_url=None):
     conn = get_db()
     try:
         with conn:
@@ -49,8 +49,8 @@ def createUser(name, password, phoneNumber, email, pincode, address, role):
             hash_password = generate_password_hash(password)
 
             cursor.execute('''
-INSERT INTO Users(user_id, password, date_of_account_creation, isApproved, block, name, address, email, phone_number, pin_code, role) VALUES(?,?,?,?,?,?,?,?,?,?,?)
-''', (user_id, hash_password, date_of_creation, False, False, name, address, email, phoneNumber, pincode, role))
+INSERT INTO Users(user_id, password, date_of_account_creation, isApproved, block, name, address, email, phone_number, pin_code, role, image_url) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+''', (user_id, hash_password, date_of_creation, False, False, name, address, email, phoneNumber, pincode, role, image_url))
 
         return {'message': f"User created with role {role} and user id = ${user_id} ", 'status': 201}
     except Exception as error:
@@ -81,11 +81,11 @@ def createOrder(user_id, Product_id, quantity, message=""):
             order_id = "ORD" + str(uuid.uuid4().hex)[:8]
             date_of_order_creation = date.today().isoformat()
 
-            cursor.execute('SELECT name, price, category FROM Products WHERE Product_id = ?', (Product_id,))
+            cursor.execute('SELECT name, price, category, image_url FROM Products WHERE Product_id = ?', (Product_id,))
             product = cursor.fetchone()
             if not product:
                 return {'message': 'Product not found', 'status': 404}
-            name, price, category = product
+            name, price, category, image_url = product
             product_name = name
 
             cursor.execute('SELECT name FROM Users WHERE user_id = ?', (user_id,))
@@ -96,8 +96,8 @@ def createOrder(user_id, Product_id, quantity, message=""):
 
             total_amount = price * quantity
             cursor.execute('''
-INSERT INTO Order_Details(Order_id, user_id, Product_id, isApproved, quantity, date_of_order_creation, price, total_amount, product_name, user_name, message, category, sold) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-''', (order_id, user_id, Product_id, 0, quantity, date_of_order_creation, price, total_amount, product_name, user_name, message, category, 0))
+INSERT INTO Order_Details(Order_id, user_id, Product_id, isApproved, quantity, date_of_order_creation, price, total_amount, product_name, user_name, message, category, sold, image_url) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+''', (order_id, user_id, Product_id, 0, quantity, date_of_order_creation, price, total_amount, product_name, user_name, message, category, 0, image_url))
 
         return {'message': order_id, 'status': 201}
     except Exception as error:
@@ -115,7 +115,7 @@ def record_Sell(Order_id):
                 return {'message': 'Sell record already exists for this order', 'status': 200}
 
             cursor.execute('''
-                SELECT user_id, Product_id, quantity, price, product_name, user_name, category, isApproved
+                SELECT user_id, Product_id, quantity, price, product_name, user_name, category, isApproved, image_url
                 FROM Order_Details
                 WHERE Order_id = ?
             ''', (Order_id,))
@@ -123,17 +123,19 @@ def record_Sell(Order_id):
             if not order:
                 return {'message': 'Order not found', 'status': 404}
 
-            user_id, Product_id, quantity, price, product_name, user_name, category, isApproved = order
+            user_id, Product_id, quantity, price, product_name, user_name, category, isApproved, image_url = order
             if not isApproved:
                 return {'message': 'Order not approved by admin', 'status': 400}
 
-            cursor.execute('SELECT stock FROM Products WHERE Product_id = ?', (Product_id,))
+            cursor.execute('SELECT stock, image_url FROM Products WHERE Product_id = ?', (Product_id,))
             product = cursor.fetchone()
             if not product:
                 return {'message': 'Product not found', 'status': 404}
-            stock = product[0]
+            stock, prod_image_url = product
             if stock < quantity:
                 return {'message': 'Not enough stock available', 'status': 400}
+
+            final_image_url = image_url if image_url else prod_image_url
 
             total_amount = price * quantity
             Remaining_stock = stock - quantity
@@ -142,9 +144,9 @@ def record_Sell(Order_id):
 
             Sell_id = "SELL" + str(uuid.uuid4().hex)[:8]
             cursor.execute('''
-INSERT INTO Sell_History(Sell_id, product_id, Order_id, isApproved, quantity, Remaining_stock, date_of_sell, total_amount, price, product_name, user_id, user_name)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-''', (Sell_id, Product_id, Order_id, isApproved, quantity, Remaining_stock, date.today().isoformat(), total_amount, price, product_name, user_id, user_name))
+INSERT INTO Sell_History(Sell_id, product_id, Order_id, isApproved, quantity, Remaining_stock, date_of_sell, total_amount, price, product_name, user_id, user_name, image_url)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+''', (Sell_id, Product_id, Order_id, isApproved, quantity, Remaining_stock, date.today().isoformat(), total_amount, price, product_name, user_id, user_name, final_image_url))
 
         return {'message': Sell_id, 'status': 201}
     except Exception as error:

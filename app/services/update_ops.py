@@ -54,6 +54,9 @@ def update_user_details(user_id, updateUser: dict):
                 elif key == 'role':
                     cursor.execute('UPDATE Users SET role = ? WHERE user_id = ?', (value, user_id))
                     count += 1
+                elif key == 'image_url':
+                    cursor.execute('UPDATE Users SET image_url = ? WHERE user_id = ?', (value, user_id))
+                    count += 1
         return count
     finally:
         conn.close()
@@ -80,6 +83,9 @@ def update_admin_details(admin_id, updateAdmin: dict):
                     count += 1
                 elif key == 'phone_number':
                     cursor.execute('UPDATE Admin SET phone_number = ? WHERE admin_id = ?', (value, admin_id))
+                    count += 1
+                elif key == 'image_url':
+                    cursor.execute('UPDATE Admin SET image_url = ? WHERE admin_id = ?', (value, admin_id))
                     count += 1
         return count
     finally:

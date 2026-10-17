@@ -32,7 +32,49 @@ def updateTable():
                 pass
 
             try:
+                cursor.execute("ALTER TABLE Admin ADD COLUMN image_url VARCHAR(1000) DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE Users ADD COLUMN image_url VARCHAR(1000) DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
                 cursor.execute("ALTER TABLE Products ADD COLUMN image_url VARCHAR(1000) DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE Order_Details ADD COLUMN image_url VARCHAR(1000) DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE Sell_History ADD COLUMN image_url VARCHAR(1000) DEFAULT NULL")
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute('''
+                    UPDATE Order_Details
+                    SET image_url = (
+                        SELECT Products.image_url FROM Products WHERE Products.Product_id = Order_Details.product_id
+                    )
+                    WHERE image_url IS NULL
+                ''')
+            except sqlite3.OperationalError:
+                pass
+
+            try:
+                cursor.execute('''
+                    UPDATE Sell_History
+                    SET image_url = (
+                        SELECT Products.image_url FROM Products WHERE Products.Product_id = Sell_History.product_id
+                    )
+                    WHERE image_url IS NULL
+                ''')
             except sqlite3.OperationalError:
                 pass
     finally:
@@ -54,7 +96,8 @@ CREATE TABLE IF NOT EXISTS Admin(
     name TEXT,
     email TEXT UNIQUE,
     phone_number TEXT UNIQUE DEFAULT NULL,                    
-    role VARCHAR(20) DEFAULT 'admin'
+    role VARCHAR(20) DEFAULT 'admin',
+    image_url VARCHAR(1000) DEFAULT NULL
 )
 ''')
 
@@ -72,7 +115,8 @@ CREATE TABLE IF NOT EXISTS Users(
     email VARCHAR(255) UNIQUE,
     phone_number VARCHAR(255),
     pin_code VARCHAR(255),
-    role VARCHAR(20) DEFAULT 'user'
+    role VARCHAR(20) DEFAULT 'user',
+    image_url VARCHAR(1000) DEFAULT NULL
 )
 ''')
 
@@ -105,7 +149,8 @@ CREATE TABLE IF NOT EXISTS Order_Details(
     user_name VARCHAR(255),
     message VARCHAR(1000),
     category VARCHAR(255),
-    sold BOOLEAN
+    sold BOOLEAN,
+    image_url VARCHAR(1000) DEFAULT NULL
 )
 ''')
 
@@ -124,7 +169,8 @@ CREATE TABLE IF NOT EXISTS Sell_History(
     price FLOAT,
     product_name VARCHAR(255),
     user_id VARCHAR(255),
-    user_name VARCHAR(255)
+    user_name VARCHAR(255),
+    image_url VARCHAR(1000) DEFAULT NULL
 )
 ''')
     finally:

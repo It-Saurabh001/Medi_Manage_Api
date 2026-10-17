@@ -1,3 +1,4 @@
+import cloudinary.uploader
 from flask import Blueprint, jsonify, request, render_template
 from app.utils.decorators import role_required
 from app.services.add_ops import createUser
@@ -33,6 +34,13 @@ def create_user():
         if request.headers.get("Admin") == "admin":
             role = "admin"
 
+        image_url = request.form.get("image_url")
+        if "image" in request.files:
+            file = request.files["image"]
+            if file.filename != "":
+                upload_result = cloudinary.uploader.upload(file, folder="MediAdminApp/Users")
+                image_url = upload_result.get("secure_url")
+
         res = createUser(
             name=name,
             password=password,
@@ -40,7 +48,8 @@ def create_user():
             email=email,
             pincode=pincode,
             address=address,
-            role=role
+            role=role,
+            image_url=image_url
         )
         code = res.get("status", 201) if isinstance(res, dict) else 201
         return jsonify(res), code

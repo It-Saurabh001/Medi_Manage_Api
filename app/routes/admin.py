@@ -1,3 +1,4 @@
+import cloudinary.uploader
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt
 from app.utils.decorators import role_required
@@ -22,7 +23,7 @@ from app.services.delete_ops import (
 
 admin_bp = Blueprint("admin", __name__)
 
-ALLOWED_USER_EDITABLE_FIELDS = {"name", "address", "phone_number", "pin_code", "password"}
+ALLOWED_USER_EDITABLE_FIELDS = {"name", "address", "phone_number", "pin_code", "password", "image_url"}
 
 @admin_bp.route("/admin/create", methods=["POST"])
 @role_required(["admin"])
@@ -33,7 +34,15 @@ def create_admin():
         password = request.form["password"]
         phoneNumber = request.form["phoneNumber"]
         role = "admin"
-        res = createAdmin(email=email, name=name, password=password, phoneNumber=phoneNumber, role=role)
+
+        image_url = request.form.get("image_url")
+        if "image" in request.files:
+            file = request.files["image"]
+            if file.filename != "":
+                upload_result = cloudinary.uploader.upload(file, folder="MediAdminApp/Admins")
+                image_url = upload_result.get("secure_url")
+
+        res = createAdmin(email=email, name=name, password=password, phoneNumber=phoneNumber, role=role, image_url=image_url)
         code = res.get("status", 201) if isinstance(res, dict) else 201
         return jsonify(res), code
     except Exception as error:
@@ -86,6 +95,12 @@ def update_user():
                 continue
             updateUser[key] = value
 
+        if "image" in request.files:
+            file = request.files["image"]
+            if file.filename != "":
+                upload_result = cloudinary.uploader.upload(file, folder="MediAdminApp/Users")
+                updateUser["image_url"] = upload_result.get("secure_url")
+
         update_user_details(user_id, updateUser)
         return jsonify({"message": "User Updated Successfully", "status": 200}), 200
     except Exception as error:
@@ -100,6 +115,12 @@ def update_admin():
         for key, value in request.form.items():
             if key != "admin_id":
                 updateAdmin[key] = value
+
+        if "image" in request.files:
+            file = request.files["image"]
+            if file.filename != "":
+                upload_result = cloudinary.uploader.upload(file, folder="MediAdminApp/Admins")
+                updateAdmin["image_url"] = upload_result.get("secure_url")
 
         update_admin_details(admin_id, updateAdmin)
         return jsonify({"message": "Admin Updated Successfully", "status": 200}), 200
