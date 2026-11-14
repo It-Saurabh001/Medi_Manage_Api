@@ -1,9 +1,11 @@
 import os
-from config.base import BaseConfig
+from config.base import BaseConfig, _env_bool
 
 class ProductionConfig(BaseConfig):
     DEBUG = False
     TESTING = False
+    ENABLE_DOCS = _env_bool("ENABLE_DOCS", False)
+    PREFERRED_URL_SCHEME = "https"
 
     EMAIL_PROVIDER = "prod"
     OTP_STORE_PROVIDER = "prod"

@@ -1,25 +1,19 @@
-import random
 from flask import has_app_context
+
 from app.extensions import get_current_email_sender
 from app.integrations.email.factory import get_email_sender
 
-def generate_otp() -> str:
-    """Generate a 6-digit numeric OTP string."""
-    return str(random.randint(100000, 999999))
+_SUBJECTS = {
+    "login": "Your login verification code",
+    "reset": "Your password reset code",
+}
 
-def send_otp_email(to_email: str, otp: str) -> bool:
-    """Dispatch OTP email using the configured email integration provider."""
-    subject = "Your Login Verification OTP"
-    body = f"Your OTP for login verification is: {otp}. It will expire in 5 minutes."
 
-    if has_app_context():
-        sender = get_current_email_sender()
-    else:
-        # Fallback via factory (lazy importlib)
-        sender = get_email_sender({"EMAIL_PROVIDER": "dev", "DEBUG": True})
-
-    return sender.send(to=to_email, subject=subject, body=body)
-
-def send_email(to_email: str, otp: str) -> bool:
-    """Backward compatibility alias for send_otp_email."""
-    return send_otp_email(to_email, otp)
+def send_otp_email(to_email: str, otp: str, purpose: str = "login") -> bool:
+    """Send an OTP email. Returns True on success; never logs the OTP."""
+    subject = _SUBJECTS.get(purpose, "Your verification code")
+    body = (f"Your verification code is: {otp}. It expires shortly. "
+            "If you did not request this, you can ignore this email.")
+    sender = get_current_email_sender() if has_app_context() else get_email_sender(
+        {"EMAIL_PROVIDER": "dev", "DEBUG": True})
+    return bool(sender.send(to=to_email, subject=subject, body=body))

@@ -3,3 +3,5 @@ Flask-JWT-Extended==4.7.4
 cloudinary==1.44.2
 python-dotenv==1.2.2
 Werkzeug==3.1.8
+Flask-Cors==6.0.1
+# Swagger UI is loaded from jsDelivr, pinned to swagger-ui-dist 5.17.14 in app/routes/docs.py

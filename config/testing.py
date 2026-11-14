@@ -4,6 +4,8 @@ from config.base import BaseConfig
 class TestingConfig(BaseConfig):
     DEBUG = False
     TESTING = True
+    ENABLE_DOCS = True
+    DB_BACKUP_ON_MIGRATE = False
 
     SECRET_KEY = "test-secret-key-testing-only"
     JWT_SECRET_KEY = "test-jwt-secret-key-testing-only"

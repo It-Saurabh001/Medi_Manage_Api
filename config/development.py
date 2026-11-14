@@ -1,9 +1,10 @@
 import os
-from config.base import BaseConfig
+from config.base import BaseConfig, _env_bool
 
 class DevelopmentConfig(BaseConfig):
     DEBUG = True
     TESTING = False
+    ENABLE_DOCS = _env_bool("ENABLE_DOCS", True)
 
     # Fallback JWT key allowed ONLY in development
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-fallback-secret-key-123")

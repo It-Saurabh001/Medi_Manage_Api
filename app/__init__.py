@@ -34,4 +34,12 @@ def create_app(config_name=None):
     # Register all application blueprints
     register_blueprints(app)
 
+    # Part 1: CLI commands (flask init-db)
+    from app.cli import register_cli
+    register_cli(app)
+
+    # Part 3: JWT blocklist, ProxyFix, CORS, X-App-Version gate
+    from app.platform import init_platform
+    init_platform(app)
+
     return app

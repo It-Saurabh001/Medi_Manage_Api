@@ -1,111 +1,161 @@
-import os
-import sqlite3
-import time
-from werkzeug.security import check_password_hash, generate_password_hash
-from app.services.email_service import send_otp_email, generate_otp
-from app.services.otp_service import store_otp, verify_and_consume_otp, otp_store
+"""Authentication: password check, purpose-bound OTPs, token issuing (Part 3 domain).
 
-QUERIES = {
-    "user": {
-        "by_email": "SELECT user_id, password, role FROM Users WHERE email = ?",
-        "by_id": "SELECT user_id, role FROM Users WHERE user_id = ?",
-        "update_pw": "UPDATE Users SET password = ? WHERE user_id = ?",
-        "id_col": "user_id"
-    },
-    "admin": {
-        "by_email": "SELECT admin_id, password, role FROM Admin WHERE email = ?",
-        "by_id": "SELECT admin_id, role FROM Admin WHERE admin_id = ?",
-        "update_pw": "UPDATE Admin SET password = ? WHERE admin_id = ?",
-        "id_col": "admin_id"
-    }
+OTP keys: `login:{account_type}:{id}` and `reset:{account_type}:{id}`; TTL from
+config `OTP_EXPIRY_SECONDS`; max MAX_OTP_ATTEMPTS verifications, then the OTP is invalidated.
+OTPs are never returned in any response or logged.
+"""
+import secrets
+
+from flask import current_app
+from flask_jwt_extended import create_access_token, create_refresh_token
+from werkzeug.security import check_password_hash
+
+from app.errors import ApiError, ValidationError
+from app.services.email_service import send_otp_email
+
+ACCOUNT_TYPES = ("user", "admin")
+MAX_OTP_ATTEMPTS = 5
+PURPOSES = ("login", "reset")
+
+_TABLES = {
+    "user": ("Users", "user_id"),
+    "admin": ("Admin", "admin_id"),
 }
 
-def get_db_connection():
-    db_name = os.getenv("DATABASE_NAME", "My_Medical_Shope.db")
-    conn = sqlite3.connect(db_name)
-    conn.row_factory = sqlite3.Row
-    return conn
 
-def _get_user_by_email(email, user_type):
-    if user_type not in QUERIES:
+def _truthy(value):
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes")
+    return bool(value)
+
+
+# ------------------------------------------------------------------ accounts
+def find_account_by_email(conn, account_type, email):
+    table, _ = _TABLES[account_type]
+    return conn.execute(f"SELECT * FROM {table} WHERE LOWER(email) = LOWER(?)", (email,)).fetchone()
+
+
+def fetch_account(conn, account_type, account_id):
+    table, id_col = _TABLES[account_type]
+    return conn.execute(f"SELECT * FROM {table} WHERE {id_col} = ?", (account_id,)).fetchone()
+
+
+def account_id_of(account_type, row):
+    return row[_TABLES[account_type][1]]
+
+
+def resolve_role(account_type, row):
+    """Effective role from the DB row, or None if the account is deleted/disabled.
+
+    Users-table rows are always role `user` (a legacy `role='admin'` there came from the
+    removed `Admin:` header escalation and is not honoured).
+    """
+    stored = (row["role"] or "").strip().lower()
+    if account_type == "admin":
+        return "admin" if stored in ("", "admin") else None
+    return None if stored in ("deleted", "disabled") else "user"
+
+
+def ensure_account_active(account_type, row):
+    """Raise for deleted/disabled (401), blocked (403 ACCOUNT_BLOCKED) or unapproved (403)."""
+    role = resolve_role(account_type, row)
+    if role is None:
+        if account_type == "admin" and (row["role"] or "").lower() == "disabled":
+            raise ApiError("Account is disabled", 403, "ACCOUNT_BLOCKED")
+        raise ApiError("Account no longer exists", 401, "UNAUTHORIZED")
+    if account_type == "user":
+        if _truthy(row["block"]):
+            raise ApiError("Account is blocked", 403, "ACCOUNT_BLOCKED")
+        if not _truthy(row["isApproved"]):
+            raise ApiError("Account is not approved yet", 403, "ACCOUNT_NOT_APPROVED")
+    return role
+
+
+def authenticate(conn, account_type, email, password):
+    """Row on valid credentials, else None (same answer for unknown email and bad password)."""
+    row = find_account_by_email(conn, account_type, email)
+    if row is None or not row["password"]:
         return None
-    query = QUERIES[user_type]["by_email"]
-
-    conn = get_db_connection()
     try:
-        with conn:
-            cursor = conn.cursor()
-            cursor.execute(query, (email,))
-            return cursor.fetchone()
-    finally:
-        conn.close()
+        ok = check_password_hash(row["password"], password)
+    except (ValueError, TypeError):
+        ok = False
+    return row if ok else None
 
-def authenticate(email, password, user_type):
-    """Return (user_id, role) on success, or None on failure."""
-    user = _get_user_by_email(email, user_type)
-    if user and check_password_hash(user["password"], password):
-        id_column = QUERIES[user_type]["id_col"]
-        return user[id_column], user["role"]
-    return None
 
-def request_password_reset(email, user_type):
-    user = _get_user_by_email(email, user_type)
-    if not user:
-        return {"message": "Email not registered", "status": 404}
+def verify_password(row, password):
+    try:
+        return bool(row["password"]) and check_password_hash(row["password"], password)
+    except (ValueError, TypeError):
+        return False
 
-    id_column = QUERIES[user_type]["id_col"]
-    user_id = user[id_column]
 
+# ------------------------------------------------------------------ OTP
+def _store():
+    return current_app.extensions["otp_store"]
+
+
+def otp_ttl():
+    return int(current_app.config.get("OTP_EXPIRY_SECONDS", 300))
+
+
+def otp_key(purpose, account_type, account_id):
+    return f"{purpose}:{account_type}:{account_id}"
+
+
+def generate_otp():
+    return f"{secrets.randbelow(10 ** 6):06d}"
+
+
+def issue_otp(purpose, account_type, account_id, email):
+    """Store a fresh OTP and email it. Returns True if the email was handed to the provider."""
     otp = generate_otp()
-    otp_store[user_id] = {"otp": otp, "expiry": time.time() + 300}
-
-    if send_otp_email(to_email=email, otp=otp):
-        return {"message": f"OTP {otp} sent to your email", "user_id": user_id, "status": 200}
-    else:
-        return {"message": "Failed to send OTP email (check SMTP server).", "user_id": user_id, "status": 500}
-
-def reset_password_with_otp(user_id, otp, new_password, user_type):
-    if user_id not in otp_store:
-        return {"message": "No OTP request found or OTP expired", "status": 400}
-
-    stored_otp = otp_store[user_id]["otp"]
-    expiry = otp_store[user_id]["expiry"]
-
-    if time.time() > expiry:
-        del otp_store[user_id]
-        return {"message": "OTP expired", "status": 400}
-
-    if str(otp) == str(stored_otp):
-        hashed_password = generate_password_hash(new_password)
-        query = QUERIES[user_type]["update_pw"]
-
-        conn = get_db_connection()
-        try:
-            with conn:
-                cursor = conn.cursor()
-                cursor.execute(query, (hashed_password, user_id))
-        finally:
-            conn.close()
-
-        del otp_store[user_id]
-        return {"message": "Password reset successful", "status": 200}
-    else:
-        return {"message": "Invalid OTP", "status": 400}
-
-def get_user_by_id(user_id, user_type):
-    if user_type not in QUERIES:
-        return None, None
-    query = QUERIES[user_type]["by_id"]
-
-    conn = get_db_connection()
+    _store().set(otp_key(purpose, account_type, account_id), otp, ttl_seconds=otp_ttl())
     try:
-        with conn:
-            cursor = conn.cursor()
-            cursor.execute(query, (user_id,))
-            user = cursor.fetchone()
-            if user:
-                id_column = QUERIES[user_type]["id_col"]
-                return user[id_column], user["role"]
-            return None, None
-    finally:
-        conn.close()
+        return send_otp_email(to_email=email, otp=otp, purpose=purpose)
+    except Exception:
+        current_app.logger.exception("OTP email delivery failed (purpose=%s)", purpose)
+        return False
+
+
+def check_otp(purpose, account_type, account_id, candidate):
+    """Verify and consume an OTP; raises 400/429 on failure. Invalidated after MAX_OTP_ATTEMPTS."""
+    store, key = _store(), otp_key(purpose, account_type, account_id)
+    if not store.exists(key):
+        raise ValidationError("Verification code expired or not requested",
+                              fields={"otp": "request a new code"})
+    attempts = store.increment_attempts(key, ttl_seconds=otp_ttl())
+    if attempts > MAX_OTP_ATTEMPTS:
+        store.invalidate(key)
+        raise ApiError("Too many incorrect attempts; request a new code", 429, "RATE_LIMITED")
+    if store.verify_and_consume(key, str(candidate).strip()):
+        return
+    if attempts >= MAX_OTP_ATTEMPTS:
+        store.invalidate(key)
+        raise ApiError("Too many incorrect attempts; request a new code", 429, "RATE_LIMITED")
+    raise ValidationError("Invalid verification code",
+                          fields={"otp": f"incorrect; {MAX_OTP_ATTEMPTS - attempts} attempt(s) left"})
+
+
+# ------------------------------------------------------------------ tokens
+def issue_tokens(account_type, account_id, role):
+    claims = {"role": role, "account_type": account_type}
+    expires = current_app.config.get("JWT_ACCESS_TOKEN_EXPIRES")
+    return {
+        "access_token": create_access_token(identity=account_id, additional_claims=claims),
+        "refresh_token": create_refresh_token(identity=account_id, additional_claims=claims),
+        "token_type": "Bearer",
+        "expires_in": int(expires.total_seconds()) if expires else 3600,
+        "role": role,
+        "account_type": account_type,
+        "account_id": account_id,
+    }
+
+
+def account_type_from_claims(claims):
+    account_type = claims.get("account_type")
+    if account_type in ACCOUNT_TYPES:
+        return account_type
+    return "admin" if claims.get("role") == "admin" else "user"

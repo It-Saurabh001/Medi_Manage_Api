@@ -1,201 +1,138 @@
-import cloudinary.uploader
-from flask import Blueprint, jsonify, request
-from flask_jwt_extended import get_jwt
-from app.utils.decorators import role_required
-from app.services.add_ops import createAdmin, record_Sell
-from app.services.read_ops import (
-    getAllAdmins,
-    getAllUsers,
-    getSellHistory,
-    getUserSellHistory,
-    getProductSellHistory,
-)
-from app.services.update_ops import (
-    update_approve_user,
-    update_user_details,
-    update_admin_details,
-)
-from app.services.delete_ops import (
-    delete_User,
-    delete_Admin,
-    delete_SellHistory,
-)
+"""Admin account endpoints under API_PREFIX (Part 3).
 
-admin_bp = Blueprint("admin", __name__)
+Replaces /admin/create, /admin/getAllAdmins, /admin/update and /admin/delete (hard -> soft delete).
+"""
+from flask import request, url_for
 
-ALLOWED_USER_EDITABLE_FIELDS = {"name", "address", "phone_number", "pin_code", "password", "image_url"}
+from app.db import db_connection, get_db
+from app.errors import ValidationError
+from app.services import account_service as acc
+from app.services import auth_service as auth
+from app.services.audit_service import write_audit
+from app.utils.api_blueprint import ApiBlueprint
+from app.utils.decorators import current_identity, role_required
+from app.utils.pagination import parse_pagination
+from app.utils.responses import api_response, paginated_response
+from app.utils.uploads import IMAGE_MIME, upload_file
+from app.utils.validators import Validator, request_payload
 
-@admin_bp.route("/admin/create", methods=["POST"])
-@role_required(["admin"])
+admin_bp = ApiBlueprint("admin", __name__)
+ADMIN = ["admin"]
+ADMIN_IMAGE_FOLDER = "MediAdminApp/Admins"
+
+
+def _image_url():
+    file = request.files.get("image")
+    if file is None or not file.filename:
+        return None
+    return upload_file(file, ADMIN_IMAGE_FOLDER, field="image", allowed_mime=IMAGE_MIME)
+
+
+@admin_bp.get("/admins")
+@role_required(ADMIN)
+def list_admins():
+    v = Validator(request.args.to_dict())
+    v.string("q", max_len=100)
+    v.enum("role", acc.ADMIN_ROLES)
+    filters = {k: val for k, val in v.validate("Invalid query parameters").items() if val}
+    limit, offset, sort, order = parse_pagination(request.args, acc.ADMIN_SORT, default_sort="name")
+    conn = get_db()
+    try:
+        rows, total = acc.list_admins(conn, filters, limit, offset, sort, order)
+    finally:
+        conn.close()
+    return paginated_response([acc.serialize_admin(r) for r in rows], limit, offset, total,
+                              "Admins fetched successfully")
+
+
+@admin_bp.post("/admins")
+@role_required(ADMIN)
 def create_admin():
+    v = Validator(request_payload())
+    v.string("name", required=True, min_len=1, max_len=200)
+    acc.add_contact_rules(v, require_email=True)
+    acc.add_password_rule(v, required=True)
+    acc.reject_fields(v, ("role", "admin_id", "image_url", "pin_code"), "cannot be set")
+    cleaned = v.validate()
+    identity, role = current_identity()
+    with db_connection(immediate=True) as conn:
+        acc.ensure_admin_unique(conn, cleaned["email"], cleaned.get("phone_number"))
+    image_url = _image_url()
+    if image_url:
+        cleaned["image_url"] = image_url
+    with db_connection(immediate=True) as conn:
+        acc.ensure_admin_unique(conn, cleaned["email"], cleaned.get("phone_number"))
+        admin_id = acc.insert_admin(conn, cleaned)
+        write_audit(conn, identity, role, "admin.create", "admin", admin_id,
+                    {k: v for k, v in cleaned.items() if k != "password"})
+        data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
+    location = url_for("admin.get_admin", admin_id=admin_id, _external=True)
+    return api_response(data, "Admin created", 201, headers={"Location": location})
+
+
+@admin_bp.get("/admins/<admin_id>")
+@role_required(ADMIN)
+def get_admin(admin_id):
+    conn = get_db()
     try:
-        email = request.form["email"]
-        name = request.form["name"]
-        password = request.form["password"]
-        phoneNumber = request.form["phoneNumber"]
-        role = "admin"
+        data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
+    finally:
+        conn.close()
+    return api_response(data, "Admin fetched successfully")
 
-        image_url = request.form.get("image_url")
-        if "image" in request.files:
-            file = request.files["image"]
-            if file.filename != "":
-                upload_result = cloudinary.uploader.upload(file, folder="MediAdminApp/Admins")
-                image_url = upload_result.get("secure_url")
 
-        res = createAdmin(email=email, name=name, password=password, phoneNumber=phoneNumber, role=role, image_url=image_url)
-        code = res.get("status", 201) if isinstance(res, dict) else 201
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/getAllAdmins", methods=["GET"])
-@role_required(["admin"])
-def get_All_Admins():
+@admin_bp.patch("/admins/<admin_id>")
+@role_required(ADMIN)
+def update_admin(admin_id):
+    payload = request_payload()
+    identity, role = current_identity()
+    is_self = identity == admin_id
+    v = Validator(payload, partial=True)
+    v.string("name", required=True, min_len=1, max_len=200)
+    acc.add_contact_rules(v)
+    acc.add_password_rule(v)
+    v.enum("role", acc.ADMIN_ROLES)
+    acc.reject_fields(v, ("admin_id", "image_url", "pin_code", "is_active"), "cannot be changed")
+    if not is_self:
+        for field in ("email", "password"):
+            v.reject(field, "only the account owner can change this")
+    conn = get_db()
     try:
-        admins = getAllAdmins()
-        return jsonify({"admins": admins, "message": "Admins fetched Successfully", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"admins": [], "message": str(error), "status": 400}), 400
+        row = acc.fetch_admin(conn, admin_id)
+    finally:
+        conn.close()
+    if is_self:
+        acc.require_current_password(v, payload, row, auth.verify_password)
+    cleaned = v.validate()
+    has_image = bool(request.files.get("image") and request.files["image"].filename)
+    if not cleaned and not has_image:
+        raise ValidationError("No updatable fields supplied")
+    with db_connection(immediate=True) as conn:
+        row = acc.fetch_admin(conn, admin_id)
+        if cleaned.get("role") == "disabled":
+            acc.ensure_not_last_admin(conn, row)
+        acc.ensure_admin_unique(conn, cleaned.get("email"), cleaned.get("phone_number"), exclude_id=admin_id)
+    if has_image:
+        cleaned["image_url"] = _image_url()
+    with db_connection(immediate=True) as conn:
+        row = acc.fetch_admin(conn, admin_id)
+        if cleaned.get("role") == "disabled":
+            acc.ensure_not_last_admin(conn, row)
+        acc.update_admin(conn, admin_id, cleaned)
+        write_audit(conn, identity, role, "admin.update", "admin", admin_id,
+                    {k: v for k, v in cleaned.items() if k != "password"})
+        data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
+    return api_response(data, "Admin updated")
 
-@admin_bp.route("/admin/getAllUsers", methods=["GET"])
-@role_required(["admin"])
-def get_All_Users():
-    try:
-        users = getAllUsers()
-        return jsonify({"users": users, "message": "Users fetched Successfully", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"users": [], "message": str(error), "status": 400}), 400
 
-@admin_bp.route("/admin/approveUser", methods=["PATCH"])
-@role_required(["admin"])
-def approve_User():
-    try:
-        userId = request.form["user_id"]
-        approve = request.form["isApproved"]
-        res = update_approve_user(userId=userId, approve=approve)
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/updateUser", methods=["PATCH"])
-@role_required(["admin", "user"])
-def update_user():
-    try:
-        user_id = request.form["user_id"]
-        claims = get_jwt()
-        caller_role = claims.get("role", "user")
-
-        updateUser = {}
-        for key, value in request.form.items():
-            if key == "user_id":
-                continue
-            # Non-admins cannot elevate privilege (block, isApproved, role, date_of_account_creation)
-            if caller_role != "admin" and key not in ALLOWED_USER_EDITABLE_FIELDS:
-                continue
-            updateUser[key] = value
-
-        if "image" in request.files:
-            file = request.files["image"]
-            if file.filename != "":
-                upload_result = cloudinary.uploader.upload(file, folder="MediAdminApp/Users")
-                updateUser["image_url"] = upload_result.get("secure_url")
-
-        update_user_details(user_id, updateUser)
-        return jsonify({"message": "User Updated Successfully", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/update", methods=["PATCH"])
-@role_required(["admin"])
-def update_admin():
-    try:
-        admin_id = request.form["admin_id"]
-        updateAdmin = {}
-        for key, value in request.form.items():
-            if key != "admin_id":
-                updateAdmin[key] = value
-
-        if "image" in request.files:
-            file = request.files["image"]
-            if file.filename != "":
-                upload_result = cloudinary.uploader.upload(file, folder="MediAdminApp/Admins")
-                updateAdmin["image_url"] = upload_result.get("secure_url")
-
-        update_admin_details(admin_id, updateAdmin)
-        return jsonify({"message": "Admin Updated Successfully", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/deleteUser", methods=["POST"])
-@role_required(["admin"])
-def delete_user():
-    try:
-        user_id = request.form["user_id"]
-        res = delete_User(user_id)
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/delete", methods=["POST"])
-@role_required(["admin"])
-def delete_admin():
-    try:
-        admin_id = request.form["admin_id"]
-        res = delete_Admin(admin_id)
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/recordSell", methods=["POST"])
-@role_required(["admin"])
-def record_sell():
-    try:
-        Order_id = request.form.get("Order_id")
-        res = record_Sell(Order_id=Order_id)
-        code = res.get("status", 201) if isinstance(res, dict) else 201
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/getSellHistory", methods=["GET"])
-@role_required(["admin"])
-def get_sell_history():
-    try:
-        sell_history = getSellHistory()
-        return jsonify({"sell_history": sell_history, "message": "Sell History fetched Successfully", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"sell_history": [], "message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/user/getSellHistoryByUserId", methods=["POST"])
-@role_required(["admin", "user"])
-def get_user_sell_history():
-    try:
-        user_id = request.form["user_id"]
-        sell_history = getUserSellHistory(user_id=user_id)
-        return jsonify({"sell_history": sell_history, "message": "Sell History fetched Successfully", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"sell_history": [], "message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/getproductsellhistory", methods=["POST"])
-@role_required(["admin", "user"])
-def get_product_sell_history():
-    try:
-        Product_id = request.form["Product_id"]
-        response = getProductSellHistory(Product_id=Product_id)
-        return jsonify({"sell_history": response, "message": "Sell History fetched Successfully", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"sell_history": [], "message": str(error), "status": 400}), 400
-
-@admin_bp.route("/admin/deleteSellHistory", methods=["POST"])
-@role_required(["admin"])
-def delete_sell_history():
-    try:
-        Sell_id = request.form["Sell_id"]
-        res = delete_SellHistory(Sell_id)
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
+@admin_bp.delete("/admins/<admin_id>")
+@role_required(ADMIN)
+def delete_admin(admin_id):
+    identity, role = current_identity()
+    with db_connection(immediate=True) as conn:
+        row = acc.fetch_admin(conn, admin_id)
+        acc.ensure_not_last_admin(conn, row)
+        acc.update_admin(conn, admin_id, {"role": "deleted"})
+        write_audit(conn, identity, role, "admin.delete", "admin", admin_id, {"soft_delete": True})
+        data = acc.serialize_admin(acc.fetch_admin(conn, admin_id, include_deleted=True))
+    return api_response(data, "Admin deleted")

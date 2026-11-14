@@ -1,64 +1,48 @@
 import sqlite3
-from app.services.add_ops import createOrder, record_Sell
-from app.services.read_ops import getAllOrders, getUserOrders, getOrderById, getSellHistory, getUserSellHistory, getProductSellHistory
 
-def test_order_and_sell_history_image_url(app, client, make_headers):
-    # Setup test product with image and product without image
-    conn = sqlite3.connect("test_medical_shop.db")
-    c = conn.cursor()
-    c.execute("INSERT INTO Users (user_id, name, email, role) VALUES ('U1', 'Test User', 'u1@test.com', 'user')")
-    c.execute("INSERT INTO Products (Product_id, name, price, category, stock, image_url) VALUES ('PROD_IMG', 'Image Med', 20.0, 'Pills', 50, 'https://res.cloudinary.com/test/image.jpg')")
-    c.execute("INSERT INTO Products (Product_id, name, price, category, stock, image_url) VALUES ('PROD_NO_IMG', 'No Image Med', 10.0, 'Liquid', 50, NULL)")
-    conn.commit()
-    conn.close()
+from app.db import db_connection
 
-    # 1. Create order with image
-    res1 = createOrder('U1', 'PROD_IMG', 2, 'Take twice daily')
-    ord1_id = res1['message']
 
-    # 2. Create order without image
-    res2 = createOrder('U1', 'PROD_NO_IMG', 1, '')
-    ord2_id = res2['message']
+def test_order_and_sale_image_url(app, client, api, make_headers, admin_headers):
+    """Orders and sales expose the product image (new /api/v1 order + sales endpoints)."""
+    with app.app_context():
+        with db_connection() as conn:
+            conn.execute("INSERT INTO Users (user_id, name, email, role, isApproved, block) "
+                         "VALUES ('U1', 'Test User', 'u1@test.com', 'user', 1, 0)")
+    user_headers = make_headers("U1", "user")
 
-    # Verify getAllOrders
-    orders = getAllOrders()
-    ord1 = [o for o in orders if o['order_id'] == ord1_id][0]
-    ord2 = [o for o in orders if o['order_id'] == ord2_id][0]
-    assert ord1['image_url'] == 'https://res.cloudinary.com/test/image.jpg'
-    assert ord2['image_url'] is None
+    pids = []
+    for name in ("Image Med", "No Image Med"):
+        res = client.post(f"{api}/products", json={"name": name, "price": 20}, headers=admin_headers)
+        pids.append(res.get_json()["data"]["product_id"])
+        client.post(f"{api}/products/{pids[-1]}/stock/purchase", headers=admin_headers,
+                    json={"batch_no": "B1", "expiry_date": "2999-12-31", "quantity": 50})
+    image = "https://res.cloudinary.com/test/image.jpg"
+    with app.app_context():
+        with db_connection() as conn:
+            conn.execute("UPDATE Products SET image_url = ? WHERE Product_id = ?", (image, pids[0]))
 
-    # Verify getUserOrders
-    user_orders = getUserOrders('U1')
-    assert any(o['order_id'] == ord1_id and o['image_url'] == 'https://res.cloudinary.com/test/image.jpg' for o in user_orders)
-    assert any(o['order_id'] == ord2_id and o['image_url'] is None for o in user_orders)
+    ord1 = client.post(f"{api}/orders", json={"product_id": pids[0], "quantity": 2, "message": "Take twice daily"},
+                       headers=user_headers).get_json()["data"]
+    ord2 = client.post(f"{api}/orders", json={"product_id": pids[1], "quantity": 1},
+                       headers=user_headers).get_json()["data"]
+    assert ord1["image_url"] == image and ord2["image_url"] is None
 
-    # Verify getOrderById
-    single_order = getOrderById(ord1_id)
-    assert single_order is not None
-    assert single_order['image_url'] == 'https://res.cloudinary.com/test/image.jpg'
+    all_orders = client.get(f"{api}/orders", headers=admin_headers).get_json()["data"]
+    assert any(o["order_id"] == ord1["order_id"] and o["image_url"] == image for o in all_orders)
+    user_orders = client.get(f"{api}/users/U1/orders", headers=user_headers).get_json()["data"]
+    assert any(o["order_id"] == ord1["order_id"] and o["image_url"] == image for o in user_orders)
+    single = client.get(f"{api}/orders/{ord1['order_id']}", headers=user_headers).get_json()["data"]
+    assert single["image_url"] == image
 
-    # Approve order 1 and record sell
-    conn = sqlite3.connect("test_medical_shop.db")
-    c = conn.cursor()
-    c.execute("UPDATE Order_Details SET isApproved = 1 WHERE Order_id = ?", (ord1_id,))
-    conn.commit()
-    conn.close()
+    client.post(f"{api}/orders/{ord1['order_id']}/approve", headers=admin_headers)
+    sold = client.post(f"{api}/orders/{ord1['order_id']}/sell", headers=admin_headers)
+    assert sold.status_code == 200
+    sale_id = sold.get_json()["data"]["sales"][0]["sale_id"]
+    for query in ("", "?user_id=U1", f"?product_id={pids[0]}"):
+        sales = client.get(f"{api}/sales{query}", headers=admin_headers).get_json()["data"]
+        assert any(s["sale_id"] == sale_id and s["image_url"] == image for s in sales)
 
-    res_sell = record_Sell(ord1_id)
-    sell_id = res_sell['message']
-
-    # Verify getSellHistory
-    sells = getSellHistory()
-    sell1 = [s for s in sells if s['Sell_id'] == sell_id][0]
-    assert sell1['image_url'] == 'https://res.cloudinary.com/test/image.jpg'
-
-    # Verify getUserSellHistory
-    user_sells = getUserSellHistory('U1')
-    assert any(s['Sell_id'] == sell_id and s['image_url'] == 'https://res.cloudinary.com/test/image.jpg' for s in user_sells)
-
-    # Verify getProductSellHistory
-    prod_sells = getProductSellHistory('PROD_IMG')
-    assert any(s['Sell_id'] == sell_id and s['image_url'] == 'https://res.cloudinary.com/test/image.jpg' for s in prod_sells)
 
 def test_admin_and_user_profile_image_url(app, client, make_headers):
     from app.services.read_ops import getAllAdmins, getAllUsers, getSpecificUser

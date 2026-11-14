@@ -1,197 +1,155 @@
-import time
-from flask import Blueprint, jsonify, request
-from flask_jwt_extended import (
-    create_access_token,
-    create_refresh_token,
-    get_jwt,
-    get_jwt_identity,
-    jwt_required,
-)
-from app.services.auth_service import (
-    authenticate,
-    get_user_by_id,
-    request_password_reset,
-    reset_password_with_otp,
-)
-from app.services.email_service import generate_otp, send_otp_email
-from app.services.otp_service import otp_store, user_otp_store
+"""Authentication endpoints under API_PREFIX (Part 3).
 
-auth_bp = Blueprint("auth", __name__)
+Replaces /admin/login, /admin/verifyOtp, /admin/refreshToken, /admin/requestAdminPasswordReset,
+/admin/resetAdminPasswordWithOtp, /user/login, /user/verifyUserOtp, /user/requestUserPasswordReset
+and /user/resetUserPasswordWithOtp.
+"""
+from flask_jwt_extended import decode_token, get_jwt, get_jwt_identity, jwt_required
 
-@auth_bp.route("/admin/refreshToken", methods=["POST"])
+from app.db import db_connection, get_db
+from app.errors import ApiError, ValidationError
+from app.services import account_service as acc
+from app.services import auth_service as auth
+from app.services.audit_service import write_audit
+from app.services.token_blocklist import revoke_token
+from app.utils.api_blueprint import ApiBlueprint
+from app.utils.decorators import role_required
+from app.utils.responses import api_response
+from app.utils.validators import Validator, request_payload
+
+auth_bp = ApiBlueprint("auth", __name__)
+
+RESET_MESSAGE = "If an account exists for this email, a reset code has been sent."
+
+
+def _credentials_validator(payload):
+    v = Validator(payload)
+    v.string("email", required=True, max_len=200)
+    v.string("password", required=True, max_len=128)
+    v.enum("account_type", auth.ACCOUNT_TYPES, default="user")
+    return v
+
+
+@auth_bp.post("/auth/login")
+def login():
+    cleaned = _credentials_validator(request_payload()).validate()
+    account_type = cleaned["account_type"]
+    conn = get_db()
+    try:
+        row = auth.authenticate(conn, account_type, cleaned["email"], cleaned["password"])
+    finally:
+        conn.close()
+    if row is None:
+        raise ApiError("Invalid email or password", 401, "UNAUTHORIZED")
+    auth.ensure_account_active(account_type, row)
+    account_id = auth.account_id_of(account_type, row)
+    if not auth.issue_otp("login", account_type, account_id, row["email"]):
+        raise ApiError("Could not send the verification code; try again", 502, "INTERNAL_ERROR")
+    return api_response({
+        "account_id": account_id,
+        "account_type": account_type,
+        "otp_required": True,
+        "otp_expires_in": auth.otp_ttl(),
+    }, "Verification code sent to your email")
+
+
+@auth_bp.post("/auth/verify-otp")
+def verify_otp():
+    v = Validator(request_payload())
+    v.string("account_id", required=True, max_len=64)
+    v.string("otp", required=True, min_len=6, max_len=6)
+    v.enum("account_type", auth.ACCOUNT_TYPES, default="user")
+    cleaned = v.validate()
+    account_type, account_id = cleaned["account_type"], cleaned["account_id"]
+    auth.check_otp("login", account_type, account_id, cleaned["otp"])
+    with db_connection() as conn:
+        row = auth.fetch_account(conn, account_type, account_id)
+        if row is None:
+            raise ApiError("Account no longer exists", 401, "UNAUTHORIZED")
+        role = auth.ensure_account_active(account_type, row)
+        write_audit(conn, account_id, role, "auth.login", account_type, account_id, {})
+    return api_response(auth.issue_tokens(account_type, account_id, role), "Login successful")
+
+
+@auth_bp.post("/auth/refresh")
 @jwt_required(refresh=True)
-def refresh_token():
+def refresh():
+    claims = get_jwt()
+    account_id = get_jwt_identity()
+    account_type = auth.account_type_from_claims(claims)
+    conn = get_db()
     try:
-        admin_id = get_jwt_identity()
-        claims = get_jwt()
-        role = claims.get("role")
-        new_access_token = create_access_token(identity=admin_id, additional_claims={"role": role})
-        new_refresh_token = create_refresh_token(identity=admin_id, additional_claims={"role": role})
+        row = auth.fetch_account(conn, account_type, account_id)
+    finally:
+        conn.close()
+    if row is None:
+        raise ApiError("Account no longer exists", 401, "UNAUTHORIZED")
+    role = auth.ensure_account_active(account_type, row)  # role + block status re-read from DB
+    revoke_token(claims)  # rotation: the presented refresh token cannot be used again
+    return api_response(auth.issue_tokens(account_type, account_id, role), "Token refreshed")
 
-        return jsonify({
-            "access_token": new_access_token,
-            "refresh_token": new_refresh_token,
-            "role": role,
-            "status": 200,
-            "message": "Token refreshed successfully"
-        }), 200
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 401}), 401
 
-@auth_bp.route("/admin/login", methods=["POST"])
-def login_Admin():
+@auth_bp.post("/auth/logout")
+@role_required(["admin", "user"])
+def logout():
+    claims = get_jwt()
+    v = Validator(request_payload())
+    v.string("refresh_token", max_len=4096)
+    refresh_token = v.validate().get("refresh_token")
+    revoked = ["access"]
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token, allow_expired=True)
+        except Exception:
+            raise ValidationError(fields={"refresh_token": "invalid token"})
+        if payload.get("type") != "refresh" or payload.get("sub") != claims.get("sub"):
+            raise ValidationError(fields={"refresh_token": "not a refresh token for this account"})
+        revoke_token(payload)
+        revoked.append("refresh")
+    revoke_token(claims)
+    return api_response({"revoked": revoked}, "Logged out")
+
+
+@auth_bp.post("/auth/password-reset/request")
+def password_reset_request():
+    v = Validator(request_payload())
+    v.string("email", required=True, max_len=200)
+    v.enum("account_type", auth.ACCOUNT_TYPES, default="user")
+    cleaned = v.validate()
+    conn = get_db()
     try:
-        email = request.form["email"]
-        password = request.form["password"]
-        auth_result = authenticate(email=email, password=password, user_type="admin")
+        row = auth.find_account_by_email(conn, cleaned["account_type"], cleaned["email"])
+    finally:
+        conn.close()
+    if row is not None and auth.resolve_role(cleaned["account_type"], row) is not None:
+        auth.issue_otp("reset", cleaned["account_type"], auth.account_id_of(cleaned["account_type"], row), row["email"])
+    # Identical response whether or not the account exists (no user enumeration).
+    return api_response({"otp_expires_in": auth.otp_ttl()}, RESET_MESSAGE)
 
-        if not auth_result:
-            return jsonify({"status": 401, "message": "Invalid email or password"}), 401
 
-        admin_id, role = auth_result
-        otp = generate_otp()
-        expiry = time.time() + 300
-        otp_store[admin_id] = {"otp": otp, "expiry": expiry}
-
-        send_otp_email(to_email=email, otp=otp)
-
-        return jsonify({"status": 200, "admin_id": admin_id, "role": role, "message": "OTP sent to your email"}), 200
-    except Exception as error:
-        return jsonify({"message": str(error), "status": 400}), 400
-
-@auth_bp.route("/admin/verifyOtp", methods=["POST"])
-def verify_admin_otp():
+@auth_bp.post("/auth/password-reset/confirm")
+def password_reset_confirm():
+    payload = request_payload()
+    v = Validator(payload)
+    v.string("email", required=True, max_len=200)
+    v.string("otp", required=True, min_len=6, max_len=6)
+    v.enum("account_type", auth.ACCOUNT_TYPES, default="user")
+    acc.add_password_rule(v, "new_password", required=True)
+    cleaned = v.validate()
+    account_type = cleaned["account_type"]
+    conn = get_db()
     try:
-        admin_id = request.form["admin_id"]
-        otp = request.form["otp"]
-        if admin_id not in otp_store:
-            return jsonify({"status": 400, "message": "No OTP request found "}), 400
-        stored_otp = otp_store[admin_id]["otp"]
-        expiry = otp_store[admin_id]["expiry"]
-
-        if time.time() > expiry:
-            del otp_store[admin_id]
-            return jsonify({"status": 400, "message": "OTP expired"}), 400
-
-        if str(otp) == str(stored_otp):
-            _, role = get_user_by_id(admin_id, "admin")
-            access_token = create_access_token(identity=admin_id, additional_claims={"role": role})
-            refresh_token = create_refresh_token(identity=admin_id, additional_claims={"role": role})
-
-            del otp_store[admin_id]
-            return jsonify({
-                "status": 200,
-                "message": "OTP verified successfully",
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "role": role
-            }), 200
+        row = auth.find_account_by_email(conn, account_type, cleaned["email"])
+    finally:
+        conn.close()
+    if row is None or auth.resolve_role(account_type, row) is None:
+        raise ValidationError("Verification code expired or not requested", fields={"otp": "request a new code"})
+    account_id = auth.account_id_of(account_type, row)
+    auth.check_otp("reset", account_type, account_id, cleaned["otp"])
+    with db_connection(immediate=True) as conn:
+        if account_type == "admin":
+            acc.update_admin(conn, account_id, {"password": cleaned["new_password"]})
         else:
-            return jsonify({"status": 400, "message": "Invalid OTP"}), 400
-    except Exception as error:
-        return jsonify({"status": 400, "message": str(error)}), 400
-
-@auth_bp.route("/admin/requestAdminPasswordReset", methods=["POST"])
-def request_admin_password_reset():
-    try:
-        email = request.form["email"]
-        res = request_password_reset(email, "admin")
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"status": 400, "admin_id": None, "message": str(error)}), 400
-
-@auth_bp.route("/admin/resetAdminPasswordWithOtp", methods=["POST"])
-def reset_admin_password_with_otp():
-    try:
-        admin_id = request.form["admin_id"]
-        otp = request.form["otp"]
-        new_password = request.form["new_password"]
-        res = reset_password_with_otp(admin_id, otp, new_password, "admin")
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"status": 400, "message": str(error)}), 400
-
-@auth_bp.route("/user/login", methods=["POST"])
-def login_user():
-    try:
-        email = request.form["email"]
-        password = request.form["password"]
-        auth_result = authenticate(email=email, password=password, user_type="user")
-        if not auth_result:
-            return jsonify({"user_id": None, "message": "Invalid email or password", "status": 401}), 401
-
-        user_id, role = auth_result
-        otp = generate_otp()
-        expiry = time.time() + 300
-        user_otp_store[user_id] = {"otp": otp, "expiry": expiry}
-        send_otp_email(to_email=email, otp=otp)
-        return jsonify({"user_id": user_id, "role": role, "message": f"OTP {otp} sent to your email", "status": 200}), 200
-    except Exception as error:
-        return jsonify({"user_id": None, "message": str(error), "status": 400}), 400
-
-@auth_bp.route("/user/verifyUserOtp", methods=["POST"])
-def verify_user_otp():
-    try:
-        user_id = request.form["user_id"]
-        otp = request.form["otp"]
-        if user_id not in user_otp_store:
-            return jsonify({"status": 400, "message": "No OTP request found"}), 400
-        stored_otp = user_otp_store[user_id]["otp"]
-        expiry = user_otp_store[user_id]["expiry"]
-
-        if time.time() > expiry:
-            del user_otp_store[user_id]
-            return jsonify({"status": 400, "message": "OTP expired"}), 400
-
-        if str(otp) == str(stored_otp):
-            _, role = get_user_by_id(user_id, "user")
-            access_token = create_access_token(identity=user_id, additional_claims={"role": role})
-            refresh_token = create_refresh_token(identity=user_id, additional_claims={"role": role})
-            del user_otp_store[user_id]
-            return jsonify({
-                "status": 200,
-                "message": "OTP Verified Successfully",
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "role": role
-            }), 200
-        else:
-            return jsonify({
-                "status": 400,
-                "message": "Invalid OTP",
-                "access_token": None,
-                "refresh_token": None,
-                "role": "user"
-            }), 400
-    except Exception as error:
-        return jsonify({
-            "status": 400,
-            "message": str(error),
-            "access_token": None,
-            "refresh_token": None,
-            "role": "user"
-        }), 400
-
-@auth_bp.route("/user/requestUserPasswordReset", methods=["POST"])
-def request_user_password_reset():
-    try:
-        email = request.form["email"]
-        res = request_password_reset(email, "user")
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"status": 400, "message": str(error)}), 400
-
-@auth_bp.route("/user/resetUserPasswordWithOtp", methods=["POST"])
-def reset_user_password_with_otp():
-    try:
-        user_id = request.form["user_id"]
-        otp = request.form["otp"]
-        new_password = request.form["new_password"]
-        res = reset_password_with_otp(user_id, otp, new_password, "user")
-        code = res.get("status", 200) if isinstance(res, dict) else 200
-        return jsonify(res), code
-    except Exception as error:
-        return jsonify({"status": 400, "message": str(error)}), 400
+            acc.update_user(conn, account_id, {"password": cleaned["new_password"]})
+        write_audit(conn, account_id, account_type, "auth.password_reset", account_type, account_id, {})
+    return api_response(None, "Password has been reset. Please log in.")

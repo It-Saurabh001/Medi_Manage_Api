@@ -25,61 +25,61 @@
 
 Global exceptions and JWT authentication failures return standard JSON envelopes handled by `app/errors.py` and `flask_jwt_extended`:
 
-| HTTP Status | Trigger Condition | JSON Body Example |
-| :--- | :--- | :--- |
-| **400 Bad Request** | Missing mandatory request parameters or type parsing failure | `{"status": 400, "message": "Bad Request"}` |
-| **401 Unauthorized** | Missing `Authorization` header, invalid token, or expired JWT | `{"status": 401, "message": "Missing Authorization Header"}` |
-| **403 Forbidden** | Authenticated user lacks required role (e.g., non-admin calling admin route) | `{"status": 403, "message": "Access Forbidden"}` |
-| **404 Not Found** | Unregistered endpoint URL or requested resource ID does not exist | `{"status": 404, "message": "Resource Not Found"}` |
-| **405 Method Not Allowed** | Incorrect HTTP verb used for registered route (e.g. GET instead of POST) | `{"status": 405, "message": "Method Not Allowed"}` |
-| **422 Unprocessable Entity**| Malformed JWT payload or header structure failure | `{"status": 422, "message": "Unprocessable Entity"}` |
-| **500 Internal Server Error**| Uncaught backend exception (in production mode) | `{"status": 500, "message": "Internal Server Error"}` |
+| HTTP Status                   | Trigger Condition                                                            | JSON Body Example                                            |
+| :---------------------------- | :--------------------------------------------------------------------------- | :----------------------------------------------------------- |
+| **400 Bad Request**           | Missing mandatory request parameters or type parsing failure                 | `{"status": 400, "message": "Bad Request"}`                  |
+| **401 Unauthorized**          | Missing `Authorization` header, invalid token, or expired JWT                | `{"status": 401, "message": "Missing Authorization Header"}` |
+| **403 Forbidden**             | Authenticated user lacks required role (e.g., non-admin calling admin route) | `{"status": 403, "message": "Access Forbidden"}`             |
+| **404 Not Found**             | Unregistered endpoint URL or requested resource ID does not exist            | `{"status": 404, "message": "Resource Not Found"}`           |
+| **405 Method Not Allowed**    | Incorrect HTTP verb used for registered route (e.g. GET instead of POST)     | `{"status": 405, "message": "Method Not Allowed"}`           |
+| **422 Unprocessable Entity**  | Malformed JWT payload or header structure failure                            | `{"status": 422, "message": "Unprocessable Entity"}`         |
+| **500 Internal Server Error** | Uncaught backend exception (in production mode)                              | `{"status": 500, "message": "Internal Server Error"}`        |
 
 ---
 
 ## 3. Endpoint Index
 
-| # | Method | URL | Auth | Role | Kotlin App |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| 1 | `GET` | `/health` | None | Public | Not used |
-| 2 | `GET` | `/` | None | Public | Not used |
-| 3 | `GET` | `/dox` | None | Public | Not used |
-| 4 | `POST` | `/admin/refreshToken` | Refresh Token | Admin | `admin/refreshToken` |
-| 5 | `POST` | `/admin/login` | None | Public | `admin/login` |
-| 6 | `POST` | `/admin/verifyOtp` | None | Public | `admin/verifyOtp` |
-| 7 | `POST` | `/admin/requestAdminPasswordReset` | None | Public | `admin/requestAdminPasswordReset` |
-| 8 | `POST` | `/admin/resetAdminPasswordWithOtp` | None | Public | `admin/resetAdminPasswordWithOtp` |
-| 9 | `POST` | `/user/create` | Optional Header | Public | Not used |
-| 10 | `POST` | `/user/login` | None | Public | Not used |
-| 11 | `POST` | `/user/verifyUserOtp` | None | Public | Not used |
-| 12 | `POST` | `/user/requestUserPasswordReset` | None | Public | Not used |
-| 13 | `POST` | `/user/resetUserPasswordWithOtp` | None | Public | Not used |
-| 14 | `POST` | `/admin/create` | Access Token | Admin | `admin/create` |
-| 15 | `GET` | `/admin/getAllAdmins` | Access Token | Admin | `admin/getAllAdmins` |
-| 16 | `GET` | `/admin/getAllUsers` | Access Token | Admin | `admin/getAllUsers` |
-| 17 | `POST` | `/admin/user/getSpecificUser` | Access Token | Both | `admin/user/getSpecificUser` |
-| 18 | `PATCH` | `/admin/approveUser` | Access Token | Admin | `admin/approveUser` |
-| 19 | `PATCH` | `/admin/updateUser` | Access Token | Both | `admin/updateUser` |
-| 20 | `PATCH` | `/admin/update` | Access Token | Admin | `admin/update` |
-| 21 | `POST` | `/admin/deleteUser` | Access Token | Admin | `admin/deleteUser` |
-| 22 | `POST` | `/admin/delete` | Access Token | Admin | `admin/delete` |
-| 23 | `POST` | `/admin/addProduct` | Access Token | Admin | `admin/addProduct` |
-| 24 | `GET` | `/admin/user/getAllProducts` | Access Token | Both | `admin/user/getAllProducts` |
-| 25 | `POST` | `/admin/user/getSpecificProduct` | Access Token | Both | `admin/user/getSpecificProduct` |
-| 26 | `PATCH` | `/admin/updateProduct` | Access Token | Admin | `admin/updateProduct` |
-| 27 | `POST` | `/admin/deleteProduct` | Access Token | Admin | `admin/deleteProduct` |
-| 28 | `POST` | `/user/createOrder` | Access Token | Both | Not used |
-| 29 | `GET` | `/admin/getAllOrders` | Access Token | Admin | `admin/getAllOrders` |
-| 30 | `POST` | `/admin/user/getOrdersByUserId` | Access Token | Both | `admin/user/getOrdersByUserId` |
-| 31 | `POST` | `/admin/user/orderById` | Access Token | Both | `admin/user/orderById` |
-| 32 | `PATCH` | `/admin/updateOrder` | Access Token | Admin | `admin/updateOrder` |
-| 33 | `PATCH` | `/admin/approveOrder` | Access Token | Admin | `admin/approveOrder` |
-| 34 | `POST` | `/admin/deleteOrder` | Access Token | Admin | `admin/deleteOrder` |
-| 35 | `POST` | `/admin/recordSell` | Access Token | Admin | `admin/recordSell` |
-| 36 | `GET` | `/admin/getSellHistory` | Access Token | Admin | `admin/getSellHistory` |
-| 37 | `POST` | `/admin/user/getSellHistoryByUserId` | Access Token | Both | `admin/user/getSellHistoryByUserId` |
-| 38 | `POST` | `/admin/getproductsellhistory` | Access Token | Both | `admin/getproductsellhistory` |
-| 39 | `POST` | `/admin/deleteSellHistory` | Access Token | Admin | `admin/deleteSellHistory` |
+| #   | Method  | URL                                  | Auth            | Role   | Kotlin App                          |
+| :-- | :------ | :----------------------------------- | :-------------- | :----- | :---------------------------------- |
+| 1   | `GET`   | `/health`                            | None            | Public | Not used                            |
+| 2   | `GET`   | `/`                                  | None            | Public | Not used                            |
+| 3   | `GET`   | `/dox`                               | None            | Public | Not used                            |
+| 4   | `POST`  | `/admin/refreshToken`                | Refresh Token   | Admin  | `admin/refreshToken`                |
+| 5   | `POST`  | `/admin/login`                       | None            | Public | `admin/login`                       |
+| 6   | `POST`  | `/admin/verifyOtp`                   | None            | Public | `admin/verifyOtp`                   |
+| 7   | `POST`  | `/admin/requestAdminPasswordReset`   | None            | Public | `admin/requestAdminPasswordReset`   |
+| 8   | `POST`  | `/admin/resetAdminPasswordWithOtp`   | None            | Public | `admin/resetAdminPasswordWithOtp`   |
+| 9   | `POST`  | `/user/create`                       | Optional Header | Public | Not used                            |
+| 10  | `POST`  | `/user/login`                        | None            | Public | Not used                            |
+| 11  | `POST`  | `/user/verifyUserOtp`                | None            | Public | Not used                            |
+| 12  | `POST`  | `/user/requestUserPasswordReset`     | None            | Public | Not used                            |
+| 13  | `POST`  | `/user/resetUserPasswordWithOtp`     | None            | Public | Not used                            |
+| 14  | `POST`  | `/admin/create`                      | Access Token    | Admin  | `admin/create`                      |
+| 15  | `GET`   | `/admin/getAllAdmins`                | Access Token    | Admin  | `admin/getAllAdmins`                |
+| 16  | `GET`   | `/admin/getAllUsers`                 | Access Token    | Admin  | `admin/getAllUsers`                 |
+| 17  | `POST`  | `/admin/user/getSpecificUser`        | Access Token    | Both   | `admin/user/getSpecificUser`        |
+| 18  | `PATCH` | `/admin/approveUser`                 | Access Token    | Admin  | `admin/approveUser`                 |
+| 19  | `PATCH` | `/admin/updateUser`                  | Access Token    | Both   | `admin/updateUser`                  |
+| 20  | `PATCH` | `/admin/update`                      | Access Token    | Admin  | `admin/update`                      |
+| 21  | `POST`  | `/admin/deleteUser`                  | Access Token    | Admin  | `admin/deleteUser`                  |
+| 22  | `POST`  | `/admin/delete`                      | Access Token    | Admin  | `admin/delete`                      |
+| 23  | `POST`  | `/admin/addProduct`                  | Access Token    | Admin  | `admin/addProduct`                  |
+| 24  | `GET`   | `/admin/user/getAllProducts`         | Access Token    | Both   | `admin/user/getAllProducts`         |
+| 25  | `POST`  | `/admin/user/getSpecificProduct`     | Access Token    | Both   | `admin/user/getSpecificProduct`     |
+| 26  | `PATCH` | `/admin/updateProduct`               | Access Token    | Admin  | `admin/updateProduct`               |
+| 27  | `POST`  | `/admin/deleteProduct`               | Access Token    | Admin  | `admin/deleteProduct`               |
+| 28  | `POST`  | `/user/createOrder`                  | Access Token    | Both   | Not used                            |
+| 29  | `GET`   | `/admin/getAllOrders`                | Access Token    | Admin  | `admin/getAllOrders`                |
+| 30  | `POST`  | `/admin/user/getOrdersByUserId`      | Access Token    | Both   | `admin/user/getOrdersByUserId`      |
+| 31  | `POST`  | `/admin/user/orderById`              | Access Token    | Both   | `admin/user/orderById`              |
+| 32  | `PATCH` | `/admin/updateOrder`                 | Access Token    | Admin  | `admin/updateOrder`                 |
+| 33  | `PATCH` | `/admin/approveOrder`                | Access Token    | Admin  | `admin/approveOrder`                |
+| 34  | `POST`  | `/admin/deleteOrder`                 | Access Token    | Admin  | `admin/deleteOrder`                 |
+| 35  | `POST`  | `/admin/recordSell`                  | Access Token    | Admin  | `admin/recordSell`                  |
+| 36  | `GET`   | `/admin/getSellHistory`              | Access Token    | Admin  | `admin/getSellHistory`              |
+| 37  | `POST`  | `/admin/user/getSellHistoryByUserId` | Access Token    | Both   | `admin/user/getSellHistoryByUserId` |
+| 38  | `POST`  | `/admin/getproductsellhistory`       | Access Token    | Both   | `admin/getproductsellhistory`       |
+| 39  | `POST`  | `/admin/deleteSellHistory`           | Access Token    | Admin  | `admin/deleteSellHistory`           |
 
 ---
 
@@ -96,7 +96,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "service": "Medi_Manage_Api"
   }
   ```
-  *Note: Returns service availability indicator.*
+  _Note: Returns service availability indicator._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -145,7 +145,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "role": "admin"
   }
   ```
-  *Note: `access_token` and `refresh_token` are non-null strings; `role` is string.*
+  _Note: `access_token` and `refresh_token` are non-null strings; `role` is string._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -171,7 +171,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "role": "admin"
   }
   ```
-  *Note: OTP is generated and dispatched to `email` via SMTP; not returned in response.*
+  _Note: OTP is generated and dispatched to `email` via SMTP; not returned in response._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -199,7 +199,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "role": "admin"
   }
   ```
-  *Note: Returns active JWT access and refresh token pair.*
+  _Note: Returns active JWT access and refresh token pair._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -226,7 +226,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "user_id": "AID1a2b3c4d"
   }
   ```
-  *Note: `user_id` contains the `admin_id` of the matching admin account.*
+  _Note: `user_id` contains the `admin_id` of the matching admin account._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -315,7 +315,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "role": "user"
   }
   ```
-  *Note: OTP is generated and dispatched to `email` via SMTP.*
+  _Note: OTP is generated and dispatched to `email` via SMTP._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -463,7 +463,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     ]
   }
   ```
-  *Note: `phone_number` can be null or string; passwords are never returned.*
+  _Note: `phone_number` can be null or string; passwords are never returned._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -504,7 +504,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     ]
   }
   ```
-  *Note: `isApproved` and `block` are boolean; `address`, `email`, `phone_number`, `pin_code` may be null; passwords are never returned.*
+  _Note: `isApproved` and `block` are boolean; `address`, `email`, `phone_number`, `pin_code` may be null; passwords are never returned._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -544,7 +544,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     }
   }
   ```
-  *Note: `isApproved` and `block` are returned as raw DB values (0/1 or boolean); `address`, `email`, `phone_number`, `pin_code` may be null; `password` is excluded.*
+  _Note: `isApproved` and `block` are returned as raw DB values (0/1 or boolean); `address`, `email`, `phone_number`, `pin_code` may be null; `password` is excluded._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -719,7 +719,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "message": "PROD_1a2b3c4d"
   }
   ```
-  *Note: `message` contains the newly generated `Product_id` string.*
+  _Note: `message` contains the newly generated `Product_id` string._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -755,7 +755,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     ]
   }
   ```
-  *Note: `Product_id` uses PascalCase; `image_url` is null if no image was uploaded.*
+  _Note: `Product_id` uses PascalCase; `image_url` is null if no image was uploaded._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -790,7 +790,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     }
   }
   ```
-  *Note: `Product_id` uses PascalCase; `image_url` is null if no image was uploaded.*
+  _Note: `Product_id` uses PascalCase; `image_url` is null if no image was uploaded._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -875,7 +875,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "message": "ORD1a2b3c4d"
   }
   ```
-  *Note: `message` contains the newly created `Order_id`.*
+  _Note: `message` contains the newly created `Order_id`._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -921,7 +921,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     ]
   }
   ```
-  *Note: Order items contain lowercase `order_id` and `product_id` keys; `isApproved` and `sold` are booleans.*
+  _Note: Order items contain lowercase `order_id` and `product_id` keys; `isApproved` and `sold` are booleans._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -966,7 +966,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     ]
   }
   ```
-  *Note: Root JSON key is singular `"order"`, containing an array of order records.*
+  _Note: Root JSON key is singular `"order"`, containing an array of order records._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -1117,8 +1117,8 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "message": "SELL1a2b3c4d"
   }
   ```
-  *(Alternative if duplicate: `{"status": 200, "message": "Sell record already exists for this order"}`)*
-  *Note: `message` contains the newly generated `Sell_id` string on initial creation.*
+  _(Alternative if duplicate: `{"status": 200, "message": "Sell record already exists for this order"}`)_
+  _Note: `message` contains the newly generated `Sell_id` string on initial creation._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -1165,7 +1165,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     ]
   }
   ```
-  *Note: Key names include PascalCase `Sell_id` and `Order_id`, lowercase `product_id`, `remaining_stock` (lowercase 'r'), and `isApproved` as boolean.*
+  _Note: Key names include PascalCase `Sell_id` and `Order_id`, lowercase `product_id`, `remaining_stock` (lowercase 'r'), and `isApproved` as boolean._
 - **Error responses:**
   | HTTP Status | Condition | Body |
   | :--- | :--- | :--- |
@@ -1190,7 +1190,7 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
     "status": 200,
     "message": "Sell History fetched Successfully",
     "sell_history": [
-      {
+      {i[6,]
         "id": 1,
         "Sell_id": "SELL1a2b3c4d",
         "product_id": "PROD_1a2b3c4d",
@@ -1293,79 +1293,79 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
 
 ### A. Nullability and Data Type Contract (30 Consumed Endpoints)
 
-| Endpoint | Key | JSON Type | Nullable? | Notes for Kotlin / Retrofit DTO |
-| :--- | :--- | :--- | :--- | :--- |
-| `admin/refreshToken` | `access_token` | String | No | Non-null JWT bearer string |
-| `admin/refreshToken` | `refresh_token` | String | No | Non-null JWT refresh string |
-| `admin/refreshToken` | `role` | String | No | `"admin"` |
-| `admin/login` | `admin_id` | String | No | Format: `"AID..."` |
-| `admin/login` | `role` | String | No | `"admin"` |
-| `admin/verifyOtp` | `access_token` | String | No | Active JWT access token |
-| `admin/verifyOtp` | `refresh_token` | String | No | Active JWT refresh token |
-| `admin/verifyOtp` | `role` | String | No | `"admin"` |
-| `admin/requestAdminPasswordReset` | `user_id` | String | No | Holds target `admin_id` |
-| `admin/getAllAdmins` | `admins[].id` | Int | No | Primary key ID |
-| `admin/getAllAdmins` | `admins[].admin_id` | String | No | Unique admin ID |
-| `admin/getAllAdmins` | `admins[].date_of_account_creation` | String | No | Format: `"YYYY-MM-DD"` |
-| `admin/getAllAdmins` | `admins[].name` | String | No | Full name |
-| `admin/getAllAdmins` | `admins[].email` | String | No | Email address |
-| `admin/getAllAdmins` | `admins[].phone_number` | String | **Yes** | `null` if not provided during creation |
-| `admin/getAllAdmins` | `admins[].role` | String | No | Default `"admin"` |
-| `admin/getAllAdmins` | `admins[].image_url` | String | **Yes** | Profile picture URL, `null` if none |
-| `admin/getAllUsers` | `users[].id` | Int | No | Primary key ID |
-| `admin/getAllUsers` | `users[].user_id` | String | No | Unique user ID |
-| `admin/getAllUsers` | `users[].date_of_account_creation` | String | No | Format: `"YYYY-MM-DD"` |
-| `admin/getAllUsers` | `users[].isApproved` | Boolean | No | Explicit boolean (`true`/`false`) |
-| `admin/getAllUsers` | `users[].block` | Boolean | No | Explicit boolean (`true`/`false`) |
-| `admin/getAllUsers` | `users[].name` | String | No | Full name |
-| `admin/getAllUsers` | `users[].address` | String | **Yes** | `null` if omitted |
-| `admin/getAllUsers` | `users[].email` | String | **Yes** | `null` if user registered with phone |
-| `admin/getAllUsers` | `users[].phone_number` | String | **Yes** | `null` if user registered with email |
-| `admin/getAllUsers` | `users[].pin_code` | String | **Yes** | `null` if omitted |
-| `admin/getAllUsers` | `users[].role` | String | No | `"user"` or `"admin"` |
-| `admin/getAllUsers` | `users[].image_url` | String | **Yes** | Profile picture URL, `null` if none |
-| `admin/user/getSpecificUser` | `user` | UserDto | **Yes** | `null` on 404 Not Found (contains `image_url`) |
-| `admin/user/getAllProducts` | `products[].id` | Int | No | Primary key ID |
-| `admin/user/getAllProducts` | `products[].Product_id` | String | No | **PascalCase** key in JSON |
-| `admin/user/getAllProducts` | `products[].name` | String | No | Trade name |
-| `admin/user/getAllProducts` | `products[].price` | Double | No | Unit price |
-| `admin/user/getAllProducts` | `products[].category` | String | No | Category name |
-| `admin/user/getAllProducts` | `products[].stock` | Int | No | Available units |
-| `admin/user/getAllProducts` | `products[].image_url` | String | **Yes** | `null` if product has no Cloudinary image |
-| `admin/user/getSpecificProduct`| `product` | ProductDto| **Yes** | `null` on 404 Not Found |
-| `admin/getAllOrders` | `orders[].id` | Int | No | Primary key ID |
-| `admin/getAllOrders` | `orders[].order_id` | String | No | **Lowercase** snake_case key |
-| `admin/getAllOrders` | `orders[].user_id` | String | No | User ID |
-| `admin/getAllOrders` | `orders[].product_id` | String | No | **Lowercase** snake_case key |
-| `admin/getAllOrders` | `orders[].isApproved` | Boolean | No | Boolean approval flag |
-| `admin/getAllOrders` | `orders[].quantity` | Int | No | Order quantity |
-| `admin/getAllOrders` | `orders[].date_of_order_creation` | String | No | Format: `"YYYY-MM-DD"` |
-| `admin/getAllOrders` | `orders[].price` | Double | No | Unit price at purchase |
-| `admin/getAllOrders` | `orders[].total_amount` | Double | No | `price * quantity` |
-| `admin/getAllOrders` | `orders[].product_name` | String | No | Product title |
-| `admin/getAllOrders` | `orders[].user_name` | String | No | Customer name |
-| `admin/getAllOrders` | `orders[].message` | String | No | Prescription notes (empty string if none) |
-| `admin/getAllOrders` | `orders[].category` | String | No | Category |
-| `admin/getAllOrders` | `orders[].sold` | Boolean | No | Fulfillment indicator |
-| `admin/getAllOrders` | `orders[].image_url` | String | **Yes** | Cloudinary URL bound by `product_id`, `null` if none |
-| `admin/user/getOrdersByUserId`| `order` | List<OrderDto>| No | **Note singular key name `"order"` for list** |
-| `admin/user/orderById` | `order` | OrderDto | **Yes** | `null` on 404 Not Found (contains `image_url`) |
-| `admin/getSellHistory` | `sell_history[].id` | Int | No | Primary key ID |
-| `admin/getSellHistory` | `sell_history[].Sell_id` | String | No | **PascalCase** key (`"SELL..."`) |
-| `admin/getSellHistory` | `sell_history[].product_id` | String | No | **Lowercase** key (`"PROD_..."`) |
-| `admin/getSellHistory` | `sell_history[].Order_id` | String | No | **PascalCase** key (`"ORD..."`) |
-| `admin/getSellHistory` | `sell_history[].isApproved` | Boolean | No | Boolean approval flag |
-| `admin/getSellHistory` | `sell_history[].quantity` | Int | No | Quantity sold |
-| `admin/getSellHistory` | `sell_history[].remaining_stock` | Int | No | **Lowercase 'r'** key |
-| `admin/getSellHistory` | `sell_history[].date_of_sell` | String | No | Format: `"YYYY-MM-DD"` |
-| `admin/getSellHistory` | `sell_history[].price` | Double | No | Unit price |
-| `admin/getSellHistory` | `sell_history[].total_amount` | Double | No | Total transaction revenue |
-| `admin/getSellHistory` | `sell_history[].product_name` | String | No | Product title |
-| `admin/getSellHistory` | `sell_history[].user_id` | String | No | Customer ID |
-| `admin/getSellHistory` | `sell_history[].user_name` | String | No | Customer name |
-| `admin/getSellHistory` | `sell_history[].image_url` | String | **Yes** | Cloudinary URL bound by `product_id`, `null` if none |
-| `admin/user/getSellHistoryByUserId` | `sell_history` | List<SellDto> | No | Same shape as `admin/getSellHistory` |
-| `admin/getproductsellhistory` | `sell_history` | List<SellDto> | No | Same shape as `admin/getSellHistory` |
+| Endpoint                            | Key                                 | JSON Type      | Nullable? | Notes for Kotlin / Retrofit DTO                      |
+| :---------------------------------- | :---------------------------------- | :------------- | :-------- | :--------------------------------------------------- |
+| `admin/refreshToken`                | `access_token`                      | String         | No        | Non-null JWT bearer string                           |
+| `admin/refreshToken`                | `refresh_token`                     | String         | No        | Non-null JWT refresh string                          |
+| `admin/refreshToken`                | `role`                              | String         | No        | `"admin"`                                            |
+| `admin/login`                       | `admin_id`                          | String         | No        | Format: `"AID..."`                                   |
+| `admin/login`                       | `role`                              | String         | No        | `"admin"`                                            |
+| `admin/verifyOtp`                   | `access_token`                      | String         | No        | Active JWT access token                              |
+| `admin/verifyOtp`                   | `refresh_token`                     | String         | No        | Active JWT refresh token                             |
+| `admin/verifyOtp`                   | `role`                              | String         | No        | `"admin"`                                            |
+| `admin/requestAdminPasswordReset`   | `user_id`                           | String         | No        | Holds target `admin_id`                              |
+| `admin/getAllAdmins`                | `admins[].id`                       | Int            | No        | Primary key ID                                       |
+| `admin/getAllAdmins`                | `admins[].admin_id`                 | String         | No        | Unique admin ID                                      |
+| `admin/getAllAdmins`                | `admins[].date_of_account_creation` | String         | No        | Format: `"YYYY-MM-DD"`                               |
+| `admin/getAllAdmins`                | `admins[].name`                     | String         | No        | Full name                                            |
+| `admin/getAllAdmins`                | `admins[].email`                    | String         | No        | Email address                                        |
+| `admin/getAllAdmins`                | `admins[].phone_number`             | String         | **Yes**   | `null` if not provided during creation               |
+| `admin/getAllAdmins`                | `admins[].role`                     | String         | No        | Default `"admin"`                                    |
+| `admin/getAllAdmins`                | `admins[].image_url`                | String         | **Yes**   | Profile picture URL, `null` if none                  |
+| `admin/getAllUsers`                 | `users[].id`                        | Int            | No        | Primary key ID                                       |
+| `admin/getAllUsers`                 | `users[].user_id`                   | String         | No        | Unique user ID                                       |
+| `admin/getAllUsers`                 | `users[].date_of_account_creation`  | String         | No        | Format: `"YYYY-MM-DD"`                               |
+| `admin/getAllUsers`                 | `users[].isApproved`                | Boolean        | No        | Explicit boolean (`true`/`false`)                    |
+| `admin/getAllUsers`                 | `users[].block`                     | Boolean        | No        | Explicit boolean (`true`/`false`)                    |
+| `admin/getAllUsers`                 | `users[].name`                      | String         | No        | Full name                                            |
+| `admin/getAllUsers`                 | `users[].address`                   | String         | **Yes**   | `null` if omitted                                    |
+| `admin/getAllUsers`                 | `users[].email`                     | String         | **Yes**   | `null` if user registered with phone                 |
+| `admin/getAllUsers`                 | `users[].phone_number`              | String         | **Yes**   | `null` if user registered with email                 |
+| `admin/getAllUsers`                 | `users[].pin_code`                  | String         | **Yes**   | `null` if omitted                                    |
+| `admin/getAllUsers`                 | `users[].role`                      | String         | No        | `"user"` or `"admin"`                                |
+| `admin/getAllUsers`                 | `users[].image_url`                 | String         | **Yes**   | Profile picture URL, `null` if none                  |
+| `admin/user/getSpecificUser`        | `user`                              | UserDto        | **Yes**   | `null` on 404 Not Found (contains `image_url`)       |
+| `admin/user/getAllProducts`         | `products[].id`                     | Int            | No        | Primary key ID                                       |
+| `admin/user/getAllProducts`         | `products[].Product_id`             | String         | No        | **PascalCase** key in JSON                           |
+| `admin/user/getAllProducts`         | `products[].name`                   | String         | No        | Trade name                                           |
+| `admin/user/getAllProducts`         | `products[].price`                  | Double         | No        | Unit price                                           |
+| `admin/user/getAllProducts`         | `products[].category`               | String         | No        | Category name                                        |
+| `admin/user/getAllProducts`         | `products[].stock`                  | Int            | No        | Available units                                      |
+| `admin/user/getAllProducts`         | `products[].image_url`              | String         | **Yes**   | `null` if product has no Cloudinary image            |
+| `admin/user/getSpecificProduct`     | `product`                           | ProductDto     | **Yes**   | `null` on 404 Not Found                              |
+| `admin/getAllOrders`                | `orders[].id`                       | Int            | No        | Primary key ID                                       |
+| `admin/getAllOrders`                | `orders[].order_id`                 | String         | No        | **Lowercase** snake_case key                         |
+| `admin/getAllOrders`                | `orders[].user_id`                  | String         | No        | User ID                                              |
+| `admin/getAllOrders`                | `orders[].product_id`               | String         | No        | **Lowercase** snake_case key                         |
+| `admin/getAllOrders`                | `orders[].isApproved`               | Boolean        | No        | Boolean approval flag                                |
+| `admin/getAllOrders`                | `orders[].quantity`                 | Int            | No        | Order quantity                                       |
+| `admin/getAllOrders`                | `orders[].date_of_order_creation`   | String         | No        | Format: `"YYYY-MM-DD"`                               |
+| `admin/getAllOrders`                | `orders[].price`                    | Double         | No        | Unit price at purchase                               |
+| `admin/getAllOrders`                | `orders[].total_amount`             | Double         | No        | `price * quantity`                                   |
+| `admin/getAllOrders`                | `orders[].product_name`             | String         | No        | Product title                                        |
+| `admin/getAllOrders`                | `orders[].user_name`                | String         | No        | Customer name                                        |
+| `admin/getAllOrders`                | `orders[].message`                  | String         | No        | Prescription notes (empty string if none)            |
+| `admin/getAllOrders`                | `orders[].category`                 | String         | No        | Category                                             |
+| `admin/getAllOrders`                | `orders[].sold`                     | Boolean        | No        | Fulfillment indicator                                |
+| `admin/getAllOrders`                | `orders[].image_url`                | String         | **Yes**   | Cloudinary URL bound by `product_id`, `null` if none |
+| `admin/user/getOrdersByUserId`      | `order`                             | List<OrderDto> | No        | **Note singular key name `"order"` for list**        |
+| `admin/user/orderById`              | `order`                             | OrderDto       | **Yes**   | `null` on 404 Not Found (contains `image_url`)       |
+| `admin/getSellHistory`              | `sell_history[].id`                 | Int            | No        | Primary key ID                                       |
+| `admin/getSellHistory`              | `sell_history[].Sell_id`            | String         | No        | **PascalCase** key (`"SELL..."`)                     |
+| `admin/getSellHistory`              | `sell_history[].product_id`         | String         | No        | **Lowercase** key (`"PROD_..."`)                     |
+| `admin/getSellHistory`              | `sell_history[].Order_id`           | String         | No        | **PascalCase** key (`"ORD..."`)                      |
+| `admin/getSellHistory`              | `sell_history[].isApproved`         | Boolean        | No        | Boolean approval flag                                |
+| `admin/getSellHistory`              | `sell_history[].quantity`           | Int            | No        | Quantity sold                                        |
+| `admin/getSellHistory`              | `sell_history[].remaining_stock`    | Int            | No        | **Lowercase 'r'** key                                |
+| `admin/getSellHistory`              | `sell_history[].date_of_sell`       | String         | No        | Format: `"YYYY-MM-DD"`                               |
+| `admin/getSellHistory`              | `sell_history[].price`              | Double         | No        | Unit price                                           |
+| `admin/getSellHistory`              | `sell_history[].total_amount`       | Double         | No        | Total transaction revenue                            |
+| `admin/getSellHistory`              | `sell_history[].product_name`       | String         | No        | Product title                                        |
+| `admin/getSellHistory`              | `sell_history[].user_id`            | String         | No        | Customer ID                                          |
+| `admin/getSellHistory`              | `sell_history[].user_name`          | String         | No        | Customer name                                        |
+| `admin/getSellHistory`              | `sell_history[].image_url`          | String         | **Yes**   | Cloudinary URL bound by `product_id`, `null` if none |
+| `admin/user/getSellHistoryByUserId` | `sell_history`                      | List<SellDto>  | No        | Same shape as `admin/getSellHistory`                 |
+| `admin/getproductsellhistory`       | `sell_history`                      | List<SellDto>  | No        | Same shape as `admin/getSellHistory`                 |
 
 ---
 
@@ -1434,23 +1434,23 @@ Global exceptions and JWT authentication failures return standard JSON envelopes
 
 The following table summarizes all behavioral differences between `_archive/main_legacy.py` and the current production codebase, detailing their impact on the Kotlin Android app:
 
-| Endpoint | Legacy Behavior | Current Refactored Behavior | Impact on Kotlin Android App |
-| :--- | :--- | :--- | :--- |
-| **All Endpoints (Error States)** | Returned HTTP 200 OK headers with error details in JSON body: `return jsonify({'message': str(error), 'status': 400})`. | Returns standard HTTP error codes: `return jsonify(payload), 400` (or 401, 403, 404, 500). | `response.isSuccessful` now correctly evaluates to `false` on failure; client error interceptors and `response.errorBody()` trigger as expected. |
-| **`PATCH /admin/updateUser`** | Stored updated password in raw plaintext; allowed non-admin callers to set `role`, `isApproved`, and `block`. | Automatically hashes passwords via Werkzeug; strictly whitelists non-admin fields (`name`, `address`, `phone_number`, `pin_code`, `image_url`, `password`). | Admin app can safely update user passwords and profile pictures; non-admin users cannot accidentally or maliciously escalate privileges. |
-| **`GET /admin/getAllUsers`** | Included `"password": user[2]` in user objects. | Completely removed password field from SELECT and JSON serialization; includes `image_url`. | If Kotlin `UserDto` declared `val password: String`, mark it nullable `val password: String? = null` or remove it. Declare `val image_url: String? = null` for avatar rendering. |
-| **`GET /admin/getAllAdmins`** | Included `"password": admin[2]` in admin objects. | Completely removed password field from SELECT and JSON serialization; includes `image_url`. | If Kotlin `AdminDto` declared `val password: String`, mark it nullable or remove it. Declare `val image_url: String? = null` for avatar rendering. |
-| **`POST /admin/user/getSpecificUser`** | Included `"password"` in JSON; crashed with `TypeError: NoneType` (500) if user ID did not exist. | Omitted password; returns HTTP 404 with `{"status": 404, "user": null, "message": "User not found"}` on missing user; includes `image_url`. | App receives clean HTTP 404 response instead of unhandled 500 server crash when viewing non-existent user. |
-| **`POST /admin/user/getSpecificProduct`** | Crashed with 500 error on non-existent `Product_id`. | Returns HTTP 404 with `{"status": 404, "product": null, "message": "Product not found"}`. | App receives clean HTTP 404 response instead of unhandled 500 error. |
-| **`POST /admin/user/orderById`** | Crashed with 500 error on non-existent `Order_id`. | Returns HTTP 404 with `{"status": 404, "order": null, "message": "Order not found"}`. | App receives clean HTTP 404 response instead of unhandled 500 error. |
-| **`POST /admin/recordSell`** | Unhandled crash if `Order_id` was missing or unapproved. | Returns HTTP 404 if order not found, HTTP 400 if order is not approved (`isApproved=0`), and HTTP 400 if stock is insufficient. | Explicit error messages allow Android app to display contextual error toast/dialogs. |
-| **Admin & User Profile Images (`getAllAdmins`, `getAllUsers`, `getSpecificUser`, `createAdmin`, `createUser`, `updateUser`, `update`)** | `Admin` and `Users` tables lacked profile image storage and file upload handlers. | Added `image_url VARCHAR(1000) DEFAULT NULL` column to `Admin` and `Users`; exposed in read queries; creation (`POST admin/create`, `POST user/create`) and update (`PATCH admin/updateUser`, `PATCH admin/update`) endpoints now follow the exact same Cloudinary upload workflow as product images (`request.files['image']`). | Android app can upload images from device via `@Multipart` or send URL strings to create and update admin/user profiles. |
-| **Order & Sell History Endpoints (`getAllOrders`, `getOrdersByUserId`, `orderById`, `getSellHistory`, `getSellHistoryByUserId`, `getproductsellhistory`)** | Did not include `image_url` property in response payloads. | Performs JOIN with `Products` by `product_id` (with fallback to `Order_Details.image_url` / `Sell_History.image_url`) and returns `"image_url"`. | Add `val image_url: String? = null` to `OrderDto` and `SellDto` in Kotlin Android app to render product thumbnails directly on Order and History screens. |
+| Endpoint                                                                                                                                                   | Legacy Behavior                                                                                                         | Current Refactored Behavior                                                                                                                                                                                                                                                                                                      | Impact on Kotlin Android App                                                                                                                                                     |
+| :--------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **All Endpoints (Error States)**                                                                                                                           | Returned HTTP 200 OK headers with error details in JSON body: `return jsonify({'message': str(error), 'status': 400})`. | Returns standard HTTP error codes: `return jsonify(payload), 400` (or 401, 403, 404, 500).                                                                                                                                                                                                                                       | `response.isSuccessful` now correctly evaluates to `false` on failure; client error interceptors and `response.errorBody()` trigger as expected.                                 |
+| **`PATCH /admin/updateUser`**                                                                                                                              | Stored updated password in raw plaintext; allowed non-admin callers to set `role`, `isApproved`, and `block`.           | Automatically hashes passwords via Werkzeug; strictly whitelists non-admin fields (`name`, `address`, `phone_number`, `pin_code`, `image_url`, `password`).                                                                                                                                                                      | Admin app can safely update user passwords and profile pictures; non-admin users cannot accidentally or maliciously escalate privileges.                                         |
+| **`GET /admin/getAllUsers`**                                                                                                                               | Included `"password": user[2]` in user objects.                                                                         | Completely removed password field from SELECT and JSON serialization; includes `image_url`.                                                                                                                                                                                                                                      | If Kotlin `UserDto` declared `val password: String`, mark it nullable `val password: String? = null` or remove it. Declare `val image_url: String? = null` for avatar rendering. |
+| **`GET /admin/getAllAdmins`**                                                                                                                              | Included `"password": admin[2]` in admin objects.                                                                       | Completely removed password field from SELECT and JSON serialization; includes `image_url`.                                                                                                                                                                                                                                      | If Kotlin `AdminDto` declared `val password: String`, mark it nullable or remove it. Declare `val image_url: String? = null` for avatar rendering.                               |
+| **`POST /admin/user/getSpecificUser`**                                                                                                                     | Included `"password"` in JSON; crashed with `TypeError: NoneType` (500) if user ID did not exist.                       | Omitted password; returns HTTP 404 with `{"status": 404, "user": null, "message": "User not found"}` on missing user; includes `image_url`.                                                                                                                                                                                      | App receives clean HTTP 404 response instead of unhandled 500 server crash when viewing non-existent user.                                                                       |
+| **`POST /admin/user/getSpecificProduct`**                                                                                                                  | Crashed with 500 error on non-existent `Product_id`.                                                                    | Returns HTTP 404 with `{"status": 404, "product": null, "message": "Product not found"}`.                                                                                                                                                                                                                                        | App receives clean HTTP 404 response instead of unhandled 500 error.                                                                                                             |
+| **`POST /admin/user/orderById`**                                                                                                                           | Crashed with 500 error on non-existent `Order_id`.                                                                      | Returns HTTP 404 with `{"status": 404, "order": null, "message": "Order not found"}`.                                                                                                                                                                                                                                            | App receives clean HTTP 404 response instead of unhandled 500 error.                                                                                                             |
+| **`POST /admin/recordSell`**                                                                                                                               | Unhandled crash if `Order_id` was missing or unapproved.                                                                | Returns HTTP 404 if order not found, HTTP 400 if order is not approved (`isApproved=0`), and HTTP 400 if stock is insufficient.                                                                                                                                                                                                  | Explicit error messages allow Android app to display contextual error toast/dialogs.                                                                                             |
+| **Admin & User Profile Images (`getAllAdmins`, `getAllUsers`, `getSpecificUser`, `createAdmin`, `createUser`, `updateUser`, `update`)**                    | `Admin` and `Users` tables lacked profile image storage and file upload handlers.                                       | Added `image_url VARCHAR(1000) DEFAULT NULL` column to `Admin` and `Users`; exposed in read queries; creation (`POST admin/create`, `POST user/create`) and update (`PATCH admin/updateUser`, `PATCH admin/update`) endpoints now follow the exact same Cloudinary upload workflow as product images (`request.files['image']`). | Android app can upload images from device via `@Multipart` or send URL strings to create and update admin/user profiles.                                                         |
+| **Order & Sell History Endpoints (`getAllOrders`, `getOrdersByUserId`, `orderById`, `getSellHistory`, `getSellHistoryByUserId`, `getproductsellhistory`)** | Did not include `image_url` property in response payloads.                                                              | Performs JOIN with `Products` by `product_id` (with fallback to `Order_Details.image_url` / `Sell_History.image_url`) and returns `"image_url"`.                                                                                                                                                                                 | Add `val image_url: String? = null` to `OrderDto` and `SellDto` in Kotlin Android app to render product thumbnails directly on Order and History screens.                        |
 
 ---
 
 ## 7. UNVERIFIED Items
 
-*None.*
+_None._
 
 All 39 backend endpoints, 30 Kotlin-consumed contracts, request parameter types, response envelope schemas, database column definitions, and error conditions were verified directly from active source code in `app/routes/`, `app/services/`, and `app/errors.py`.
