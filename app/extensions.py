@@ -21,6 +21,9 @@ def init_extensions(app):
     app.extensions["email_sender"] = get_email_sender(app.config)
     app.extensions["otp_store"] = get_otp_store(app.config)
 
+    from app.utils.rate_limit import get_rate_limiter
+    app.extensions["rate_limiter"] = get_rate_limiter(app.config)
+
 def get_current_email_sender():
     from flask import current_app
     return current_app.extensions["email_sender"]

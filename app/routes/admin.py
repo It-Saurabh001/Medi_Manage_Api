@@ -1,17 +1,21 @@
 """Admin account endpoints under API_PREFIX (Part 3).
 
 Replaces /admin/create, /admin/getAllAdmins, /admin/update and /admin/delete (hard -> soft delete).
+Public admin signup (POST /admins/register) + approval (POST /admins/{admin_id}/approve).
 """
-from flask import request, url_for
+import hmac
+
+from flask import current_app, request, url_for
 
 from app.db import db_connection, get_db
-from app.errors import ValidationError
+from app.errors import ForbiddenError, ValidationError
 from app.services import account_service as acc
 from app.services import auth_service as auth
 from app.services.audit_service import write_audit
 from app.utils.api_blueprint import ApiBlueprint
 from app.utils.decorators import current_identity, role_required
 from app.utils.pagination import parse_pagination
+from app.utils.rate_limit import enforce_rate_limit
 from app.utils.responses import api_response, paginated_response
 from app.utils.uploads import IMAGE_MIME, upload_file
 from app.utils.validators import Validator, request_payload
@@ -34,7 +38,9 @@ def list_admins():
     v = Validator(request.args.to_dict())
     v.string("q", max_len=100)
     v.enum("role", acc.ADMIN_ROLES)
-    filters = {k: val for k, val in v.validate("Invalid query parameters").items() if val}
+    v.boolean("is_approved")
+    filters = {k: val for k, val in v.validate("Invalid query parameters").items()
+               if val or (k == "is_approved" and val is False)}
     limit, offset, sort, order = parse_pagination(request.args, acc.ADMIN_SORT, default_sort="name")
     conn = get_db()
     try:
@@ -52,7 +58,7 @@ def create_admin():
     v.string("name", required=True, min_len=1, max_len=200)
     acc.add_contact_rules(v, require_email=True)
     acc.add_password_rule(v, required=True)
-    acc.reject_fields(v, ("role", "admin_id", "image_url", "pin_code"), "cannot be set")
+    acc.reject_fields(v, ("role", "admin_id", "image_url", "pin_code", "is_approved", "is_owner"), "cannot be set")
     cleaned = v.validate()
     identity, role = current_identity()
     with db_connection(immediate=True) as conn:
@@ -68,6 +74,61 @@ def create_admin():
         data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
     location = url_for("admin.get_admin", admin_id=admin_id, _external=True)
     return api_response(data, "Admin created", 201, headers={"Location": location})
+
+
+def _check_signup_code(supplied):
+    expected = current_app.config.get("ADMIN_SIGNUP_CODE") or ""
+    if not expected:
+        return
+    if not hmac.compare_digest((supplied or "").encode("utf-8"), expected.encode("utf-8")):
+        raise ForbiddenError("Invalid signup code")
+
+
+@admin_bp.post("/admins/register")
+def register_admin():
+    """Public admin signup. The first admin ever becomes the approved owner; later ones await approval."""
+    cfg = current_app.config
+    enforce_rate_limit("admin_register", cfg.get("ADMIN_SIGNUP_RATE_LIMIT", 10),
+                       cfg.get("ADMIN_SIGNUP_RATE_WINDOW_SECONDS", 3600))
+    v = Validator(request_payload())
+    v.string("name", required=True, min_len=1, max_len=200)
+    acc.add_contact_rules(v, require_email=True)
+    acc.add_password_rule(v, required=True)
+    v.string("signup_code", max_len=200)
+    acc.reject_fields(v, acc.PROTECTED_ADMIN_FIELDS, "cannot be set at signup")
+    cleaned = v.validate()
+    _check_signup_code(cleaned.pop("signup_code", None))
+    with db_connection(immediate=True) as conn:
+        acc.ensure_admin_unique(conn, cleaned["email"], cleaned.get("phone_number"))
+    image_url = _image_url()
+    if image_url:
+        cleaned["image_url"] = image_url
+    password_hash = acc.hash_password(cleaned["password"])  # slow; keep it outside the write lock
+    # BEGIN IMMEDIATE holds SQLite's write lock across the first-admin check and the insert, so two
+    # concurrent signups cannot both see "no admin yet"; ux_admin_owner is the second line of defence.
+    with db_connection(immediate=True) as conn:
+        acc.ensure_admin_unique(conn, cleaned["email"], cleaned.get("phone_number"))
+        is_first = not acc.has_live_admin(conn)
+        admin_id = acc.insert_admin(conn, cleaned, is_approved=is_first, is_owner=is_first,
+                                    password_hash=password_hash)
+        details = {k: val for k, val in cleaned.items() if k != "password"}
+        details.update(is_approved=is_first, is_owner=is_first)
+        write_audit(conn, admin_id, "admin", "admin.register", "admin", admin_id, details)
+        data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
+    location = url_for("admin.get_admin", admin_id=admin_id, _external=True)
+    message = "Admin registered." if is_first else "Admin registered. Awaiting approval."
+    return api_response(data, message, 201, headers={"Location": location})
+
+
+@admin_bp.post("/admins/<admin_id>/approve")
+@role_required(ADMIN)
+def approve_admin(admin_id):
+    identity, role = current_identity()
+    with db_connection(immediate=True) as conn:
+        acc.approve_admin(conn, admin_id)
+        write_audit(conn, identity, role, "admin.approve", "admin", admin_id, {"is_approved": True})
+        data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
+    return api_response(data, "Admin approved")
 
 
 @admin_bp.get("/admins/<admin_id>")
@@ -92,7 +153,8 @@ def update_admin(admin_id):
     acc.add_contact_rules(v)
     acc.add_password_rule(v)
     v.enum("role", acc.ADMIN_ROLES)
-    acc.reject_fields(v, ("admin_id", "image_url", "pin_code", "is_active"), "cannot be changed")
+    acc.reject_fields(v, ("admin_id", "image_url", "pin_code", "is_active", "is_owner"), "cannot be changed")
+    acc.reject_fields(v, ("is_approved",), "use POST /admins/{admin_id}/approve")
     if not is_self:
         for field in ("email", "password"):
             v.reject(field, "only the account owner can change this")
@@ -110,14 +172,14 @@ def update_admin(admin_id):
     with db_connection(immediate=True) as conn:
         row = acc.fetch_admin(conn, admin_id)
         if cleaned.get("role") == "disabled":
-            acc.ensure_not_last_admin(conn, row)
+            acc.ensure_admin_removable(conn, row)
         acc.ensure_admin_unique(conn, cleaned.get("email"), cleaned.get("phone_number"), exclude_id=admin_id)
     if has_image:
         cleaned["image_url"] = _image_url()
     with db_connection(immediate=True) as conn:
         row = acc.fetch_admin(conn, admin_id)
         if cleaned.get("role") == "disabled":
-            acc.ensure_not_last_admin(conn, row)
+            acc.ensure_admin_removable(conn, row)
         acc.update_admin(conn, admin_id, cleaned)
         write_audit(conn, identity, role, "admin.update", "admin", admin_id,
                     {k: v for k, v in cleaned.items() if k != "password"})
@@ -131,7 +193,7 @@ def delete_admin(admin_id):
     identity, role = current_identity()
     with db_connection(immediate=True) as conn:
         row = acc.fetch_admin(conn, admin_id)
-        acc.ensure_not_last_admin(conn, row)
+        acc.ensure_admin_removable(conn, row)
         acc.update_admin(conn, admin_id, {"role": "deleted"})
         write_audit(conn, identity, role, "admin.delete", "admin", admin_id, {"soft_delete": True})
         data = acc.serialize_admin(acc.fetch_admin(conn, admin_id, include_deleted=True))

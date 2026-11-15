@@ -177,6 +177,9 @@ ADD_COLUMNS = {
     "Admin": [
         ("role", "VARCHAR(20) DEFAULT 'admin'"),
         ("image_url", "VARCHAR(1000) DEFAULT NULL"),
+        # Admin signup: existing admins keep access (DEFAULT 1 fills existing rows); new signups start at 0.
+        ("is_approved", "INTEGER DEFAULT 1"),
+        ("is_owner", "INTEGER DEFAULT 0"),
     ],
     "Users": [
         ("image_url", "VARCHAR(1000) DEFAULT NULL"),
@@ -239,6 +242,8 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_audit_created ON Audit_Log(created_at)",
     "CREATE INDEX IF NOT EXISTS ix_device_user ON Device_Tokens(user_id)",
     "CREATE INDEX IF NOT EXISTS ix_idempotency_created ON Idempotency_Keys(created_at)",
+    # At most one owner admin (backs up the locked first-signup check).
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_admin_owner ON Admin(is_owner) WHERE is_owner = 1",
 ]
 
 LEGACY_BATCH_EXPIRY = "9999-12-31"

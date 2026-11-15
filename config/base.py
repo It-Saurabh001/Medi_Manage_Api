@@ -49,6 +49,13 @@ class BaseConfig:
         if m.strip()
     )
 
+    # --- Admin signup (POST /admins/register) ---
+    # When set, signup must send a matching `signup_code`. Strongly recommended in production.
+    ADMIN_SIGNUP_CODE = os.getenv("ADMIN_SIGNUP_CODE", "")
+    # Per-client-IP fixed window; 0 disables the limit.
+    ADMIN_SIGNUP_RATE_LIMIT = _env_int("ADMIN_SIGNUP_RATE_LIMIT", 10)
+    ADMIN_SIGNUP_RATE_WINDOW_SECONDS = _env_int("ADMIN_SIGNUP_RATE_WINDOW_SECONDS", 3600)
+
     # --- Domain ---
     IDEMPOTENCY_TTL_HOURS = _env_int("IDEMPOTENCY_TTL_HOURS", 24)
     NEAR_EXPIRY_DAYS = _env_int("NEAR_EXPIRY_DAYS", 90)

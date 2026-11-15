@@ -1,4 +1,4 @@
-"""Client-facing constants shared by app-config, the OpenAPI spec and docs (Part 3)."""
+"""Client-facing constants shared by app-config, the OpenAPI spec and docs ."""
 
 API_NAME = "Medi_Manage_Api"
 API_VERSION = "1.0.0"

@@ -27,6 +27,9 @@ def create_app(config_name=None):
 
     # Configure logging
     configure_logging(app)
+    if is_prod and not app.config.get("ADMIN_SIGNUP_CODE"):
+        app.logger.warning("ADMIN_SIGNUP_CODE is not set: anyone can request an admin account via "
+                           "POST /admins/register (accounts still need approval). Set it in production.")
 
     # Register centralized error handlers
     register_error_handlers(app)

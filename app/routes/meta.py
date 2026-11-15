@@ -14,13 +14,15 @@ from app.utils.responses import api_response
 from app.utils.timeutil import to_iso_z, utc_now_iso
 from app.utils.uploads import IMAGE_MIME
 from app.utils.validators import Validator, request_payload
+from app.openapi.spec import build_spec
+
 
 meta_bp = ApiBlueprint("meta", __name__)
 
 PUBLIC_ENDPOINTS = (
     "meta.api_index", "meta.app_config", "meta.openapi_json", "docs.swagger_ui", "health.health",
     "health.ready", "auth.login", "auth.verify_otp", "auth.password_reset_request",
-    "auth.password_reset_confirm", "user.create_user",
+    "auth.password_reset_confirm", "user.create_user", "admin.register_admin",
 )
 DOC_ENDPOINTS = ("meta.openapi_json", "docs.swagger_ui")
 
@@ -66,6 +68,7 @@ def app_config():
         },
         "pagination": {"default_limit": 20, "max_limit": 100},
         "otp": {"length": 6, "expires_in": int(cfg.get("OTP_EXPIRY_SECONDS", 300)), "max_attempts": 5},
+        "admin_signup": {"enabled": True, "code_required": bool(cfg.get("ADMIN_SIGNUP_CODE"))},
         "error_codes": list(ERROR_CODES),
     }, "App configuration")
 
@@ -74,7 +77,6 @@ def app_config():
 def openapi_json():
     if not current_app.config.get("ENABLE_DOCS"):
         abort(404)
-    from app.openapi.spec import build_spec
 
     return jsonify(build_spec(current_app))
 

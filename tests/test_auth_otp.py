@@ -1,82 +1,53 @@
+"""Login + OTP flows on /api/v1/auth (Part 3: replaces /user/login, /user/verifyUserOtp, /admin/login, /admin/verifyOtp)."""
 import re
-from app.services.otp_service import user_otp_store, otp_store
 
-def test_user_signup_login_and_otp_flow(client, fake_email_sender):
-    # 1. Signup
-    signup_res = client.post("/user/create", data={
-        "name": "Alice Tester",
-        "email": "alice@example.com",
-        "password": "Password123!",
-        "phoneNumber": "9876543210",
-        "pincode": "400001",
-        "address": "123 Test St"
-    })
-    assert signup_res.status_code == 201
 
-    # 2. Login
+def _otp(sender):
+    return re.search(r"\b(\d{6})\b", sender.sent_messages[-1]["body"]).group(1)
+
+
+def test_user_signup_login_and_otp_flow(client, api, fake_email_sender, admin_headers):
+    signup = client.post(f"{api}/users", json={
+        "name": "Alice Tester", "email": "alice@example.com", "password": "Password123!",
+        "phone_number": "9876543210", "pin_code": "400001", "address": "123 Test St"})
+    assert signup.status_code == 201
+    user_id = signup.get_json()["data"]["user_id"]
+    assert client.post(f"{api}/users/{user_id}/approve", headers=admin_headers).status_code == 200
+
     fake_email_sender.clear()
-    login_res = client.post("/user/login", data={
-        "email": "alice@example.com",
-        "password": "Password123!"
-    })
-    assert login_res.status_code == 200
-    login_data = login_res.get_json()
-    user_id = login_data["user_id"]
-    assert user_id is not None
-
-    # Check fake email sender received OTP
+    login = client.post(f"{api}/auth/login", json={"email": "alice@example.com", "password": "Password123!"})
+    assert login.status_code == 200
+    assert login.get_json()["data"]["account_id"] == user_id
     assert len(fake_email_sender.sent_messages) == 1
-    sent_msg = fake_email_sender.sent_messages[0]
-    assert sent_msg["to"] == "alice@example.com"
-    otp_match = re.search(r"\b(\d{6})\b", sent_msg["body"])
-    assert otp_match is not None
-    otp = otp_match.group(1)
+    assert fake_email_sender.sent_messages[0]["to"] == "alice@example.com"
+    otp = _otp(fake_email_sender)
 
-    # 3. Verify OTP with wrong code
-    bad_verify = client.post("/user/verifyUserOtp", data={
-        "user_id": user_id,
-        "otp": "000000"
-    })
-    assert bad_verify.status_code == 400
+    wrong = "000000" if otp != "000000" else "111111"
+    bad = client.post(f"{api}/auth/verify-otp", json={"account_id": user_id, "otp": wrong})
+    assert bad.status_code == 400
+    assert bad.get_json()["code"] == "VALIDATION_ERROR"
 
-    # 4. Verify OTP with correct code
-    good_verify = client.post("/user/verifyUserOtp", data={
-        "user_id": user_id,
-        "otp": otp
-    })
-    assert good_verify.status_code == 200
-    tokens = good_verify.get_json()
-    assert "access_token" in tokens
-    assert "refresh_token" in tokens
+    good = client.post(f"{api}/auth/verify-otp", json={"account_id": user_id, "otp": otp})
+    assert good.status_code == 200
+    tokens = good.get_json()["data"]
+    assert tokens["access_token"] and tokens["refresh_token"]
     assert tokens["role"] == "user"
 
-def test_admin_login_and_otp_flow(client, fake_email_sender, make_headers):
-    # Create admin using admin headers
-    admin_headers = make_headers("master_admin", "admin")
-    client.post("/admin/create", data={
-        "email": "admin@example.com",
-        "name": "Admin One",
-        "password": "AdminPassword123!",
-        "phoneNumber": "9123456780"
-    }, headers=admin_headers)
 
-    # Admin login
+def test_admin_login_and_otp_flow(client, api, fake_email_sender, admin_headers):
+    created = client.post(f"{api}/admins", json={
+        "email": "admin@example.com", "name": "Admin One", "password": "AdminPassword123!",
+        "phone_number": "9123456780"}, headers=admin_headers)
+    assert created.status_code == 201
+
     fake_email_sender.clear()
-    login_res = client.post("/admin/login", data={
-        "email": "admin@example.com",
-        "password": "AdminPassword123!"
-    })
-    assert login_res.status_code == 200
-    admin_id = login_res.get_json()["admin_id"]
-
+    login = client.post(f"{api}/auth/login", json={
+        "email": "admin@example.com", "password": "AdminPassword123!", "account_type": "admin"})
+    assert login.status_code == 200
+    admin_id = login.get_json()["data"]["account_id"]
     assert len(fake_email_sender.sent_messages) == 1
-    otp_match = re.search(r"\b(\d{6})\b", fake_email_sender.sent_messages[0]["body"])
-    otp = otp_match.group(1)
 
-    # Verify admin OTP
-    verify_res = client.post("/admin/verifyOtp", data={
-        "admin_id": admin_id,
-        "otp": otp
-    })
-    assert verify_res.status_code == 200
-    assert verify_res.get_json()["role"] == "admin"
+    verify = client.post(f"{api}/auth/verify-otp", json={
+        "account_id": admin_id, "otp": _otp(fake_email_sender), "account_type": "admin"})
+    assert verify.status_code == 200
+    assert verify.get_json()["data"]["role"] == "admin"

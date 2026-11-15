@@ -1,49 +1,35 @@
-def test_role_required_unauthorized(client):
-    # Missing authorization token
-    response = client.get("/admin/getAllUsers")
+"""RBAC on /api/v1/users (Part 3: replaces /admin/getAllUsers, /admin/updateUser, /admin/user/getSpecificUser)."""
+
+
+def test_role_required_unauthorized(client, api):
+    response = client.get(f"{api}/users")
     assert response.status_code == 401
+    assert response.get_json()["code"] == "UNAUTHORIZED"
 
-def test_role_required_forbidden_for_user(client, make_headers):
-    # User token attempting to access admin-only endpoint
-    headers = make_headers("user_123", "user")
-    response = client.get("/admin/getAllUsers", headers=headers)
+
+def test_role_required_forbidden_for_user(client, api, make_headers):
+    response = client.get(f"{api}/users", headers=make_headers("user_123", "user"))
     assert response.status_code == 403
-    assert response.get_json()["message"] == "Access Forbidden"
+    assert response.get_json()["code"] == "FORBIDDEN"
 
-def test_role_required_allowed_for_admin(client, make_headers):
-    # Admin token accessing admin-only endpoint
-    headers = make_headers("admin_123", "admin")
-    response = client.get("/admin/getAllUsers", headers=headers)
-    assert response.status_code == 200
 
-def test_prevent_privilege_escalation_on_user_update(client, make_headers):
-    # 1. Create user
-    client.post("/user/create", data={
-        "name": "Bob Normal",
-        "email": "bob@example.com",
-        "password": "Password123!",
-        "phoneNumber": "8888888888"
-    })
+def test_role_required_allowed_for_admin(client, api, make_headers):
+    assert client.get(f"{api}/users", headers=make_headers("admin_123", "admin")).status_code == 200
 
-    # Fetch user_id via admin
-    admin_headers = make_headers("admin_boss", "admin")
-    users = client.get("/admin/getAllUsers", headers=admin_headers).get_json()["users"]
-    target_user = [u for u in users if u["email"] == "bob@example.com"][0]
-    user_id = target_user["user_id"]
 
-    # Normal user attempts to make themselves admin and approved
+def test_prevent_privilege_escalation_on_user_update(client, api, make_headers, admin_headers):
+    created = client.post(f"{api}/users", json={
+        "name": "Bob Normal", "email": "bob@example.com", "password": "Password123!", "phone_number": "8888888888"})
+    user_id = created.get_json()["data"]["user_id"]
     user_headers = make_headers(user_id, "user")
-    update_res = client.patch("/admin/updateUser", data={
-        "user_id": user_id,
-        "name": "Bob Hacked",
-        "role": "admin",
-        "isApproved": "true",
-        "block": "false"
-    }, headers=user_headers)
-    assert update_res.status_code == 200
 
-    # Verify user record: name updated, but role and isApproved remained untouched
-    user_check = client.post("/admin/user/getSpecificUser", data={"user_id": user_id}, headers=admin_headers).get_json()["user"]
-    assert user_check["name"] == "Bob Hacked"
-    assert user_check["role"] == "user"
-    assert user_check["isApproved"] is not True
+    escalate = client.patch(f"{api}/users/me", json={
+        "name": "Bob Hacked", "role": "admin", "is_approved": True, "is_blocked": False}, headers=user_headers)
+    assert escalate.status_code == 400
+    assert {"role", "is_approved", "is_blocked"} <= set(escalate.get_json()["fields"])
+
+    assert client.patch(f"{api}/users/me", json={"name": "Bob Renamed"}, headers=user_headers).status_code == 200
+    check = client.get(f"{api}/users/{user_id}", headers=admin_headers).get_json()["data"]
+    assert check["name"] == "Bob Renamed"
+    assert check["role"] == "user"
+    assert check["is_approved"] is False

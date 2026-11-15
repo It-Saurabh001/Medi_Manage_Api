@@ -2,6 +2,9 @@
 
 Soft delete without schema changes: Users -> role='deleted', block=1; Admin -> role='deleted'.
 Admin demotion: role='disabled'. Passwords are never serialised.
+Admin signup: Admin.is_approved (existing rows default to approved) and Admin.is_owner (at most one,
+enforced by the partial unique index ux_admin_owner). The owner cannot be disabled or deleted, and at
+least one approved, active admin must always remain.
 """
 import re
 import sqlite3
@@ -9,7 +12,7 @@ import uuid
 
 from werkzeug.security import generate_password_hash
 
-from app.errors import ConflictError, NotFoundError, ValidationError
+from app.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.utils.timeutil import to_iso_z, utc_now_iso
 from app.utils.validators import Validator
 
@@ -22,6 +25,9 @@ ADMIN_SORT = {"created_at": "date_of_account_creation", "name": "name COLLATE NO
 PROTECTED_USER_FIELDS = ("role", "is_approved", "isApproved", "is_blocked", "block", "user_id", "is_deleted",
                          "date_of_account_creation", "created_at")
 ADMIN_ROLES = ("admin", "disabled")
+PROTECTED_ADMIN_FIELDS = ("role", "is_approved", "isApproved", "is_blocked", "block", "is_owner", "is_active",
+                          "admin_id", "image_url", "pin_code", "is_deleted", "date_of_account_creation",
+                          "created_at")
 
 
 def _truthy(value):
@@ -205,9 +211,20 @@ def serialize_admin(row):
         "phone_number": row["phone_number"],
         "role": role,
         "is_active": role == "admin",
+        "is_approved": admin_is_approved(row),
+        "is_owner": admin_is_owner(row),
         "image_url": row["image_url"] if "image_url" in keys else None,
         "created_at": to_iso_z(row["date_of_account_creation"]),
     }
+
+
+def admin_is_approved(row):
+    """Rows from before the is_approved column existed count as approved."""
+    return "is_approved" not in row.keys() or row["is_approved"] is None or _truthy(row["is_approved"])
+
+
+def admin_is_owner(row):
+    return "is_owner" in row.keys() and _truthy(row["is_owner"])
 
 
 def fetch_admin(conn, admin_id, include_deleted=False):
@@ -217,13 +234,38 @@ def fetch_admin(conn, admin_id, include_deleted=False):
     return row
 
 
-def active_admin_count(conn):
-    return conn.execute("SELECT COUNT(*) FROM Admin WHERE COALESCE(role, 'admin') = 'admin'").fetchone()[0]
+APPROVED_ACTIVE_SQL = "COALESCE(role, 'admin') = 'admin' AND COALESCE(is_approved, 1) IN (1, '1')"
+LAST_ADMIN_MESSAGE = "At least one approved admin is required"
+OWNER_MESSAGE = "Owner account is protected"
+
+
+def approved_admin_count(conn):
+    return conn.execute(f"SELECT COUNT(*) FROM Admin WHERE {APPROVED_ACTIVE_SQL}").fetchone()[0]
+
+
+def ensure_not_owner(admin_row):
+    """403 for any attempt to delete, disable (block) or unapprove the owner account."""
+    if admin_is_owner(admin_row):
+        raise ForbiddenError(OWNER_MESSAGE)
 
 
 def ensure_not_last_admin(conn, admin_row):
-    if (admin_row["role"] or "admin").lower() == "admin" and active_admin_count(conn) <= 1:
-        raise ConflictError("Cannot remove or demote the last active admin")
+    """409 if removing this admin (delete/disable/unapprove) would leave no approved, active admin."""
+    is_counted = (admin_row["role"] or "admin").lower() == "admin" and admin_is_approved(admin_row)
+    if is_counted and approved_admin_count(conn) <= 1:
+        raise ConflictError(LAST_ADMIN_MESSAGE)
+
+
+def ensure_admin_removable(conn, admin_row):
+    ensure_not_owner(admin_row)
+    ensure_not_last_admin(conn, admin_row)
+
+
+def has_live_admin(conn):
+    """True if any admin account exists that is not soft-deleted (or an owner is recorded)."""
+    return conn.execute(
+        "SELECT 1 FROM Admin WHERE COALESCE(role, 'admin') <> 'deleted' OR is_owner IN (1, '1') LIMIT 1"
+    ).fetchone() is not None
 
 
 def ensure_admin_unique(conn, email=None, phone=None, exclude_id=None):
@@ -235,18 +277,29 @@ def ensure_admin_unique(conn, email=None, phone=None, exclude_id=None):
         raise ConflictError("Phone number already registered", fields={"phone_number": "already registered"})
 
 
-def insert_admin(conn, cleaned):
+def insert_admin(conn, cleaned, is_approved=True, is_owner=False, password_hash=None):
+    """Insert an admin. `password_hash` lets callers hash outside a write-locked transaction."""
     admin_id = "AID_" + uuid.uuid4().hex[:12]
     try:
         conn.execute(
             """INSERT INTO Admin(admin_id, password, name, email, phone_number, date_of_account_creation, role,
-                   image_url) VALUES (?, ?, ?, ?, ?, ?, 'admin', ?)""",
-            (admin_id, hash_password(cleaned["password"]), cleaned["name"], cleaned["email"],
-             cleaned.get("phone_number") or None, utc_now_iso(), cleaned.get("image_url")),
+                   image_url, is_approved, is_owner) VALUES (?, ?, ?, ?, ?, ?, 'admin', ?, ?, ?)""",
+            (admin_id, password_hash or hash_password(cleaned["password"]), cleaned["name"], cleaned["email"],
+             cleaned.get("phone_number") or None, utc_now_iso(), cleaned.get("image_url"),
+             1 if is_approved else 0, 1 if is_owner else 0),
         )
-    except sqlite3.IntegrityError:
+    except sqlite3.IntegrityError as exc:
+        if "is_owner" in str(exc):
+            raise ConflictError("An owner admin already exists; try again")
         raise ConflictError("Email or phone number already registered")
     return admin_id
+
+
+def approve_admin(conn, admin_id):
+    cur = conn.execute(
+        "UPDATE Admin SET is_approved = 1 WHERE admin_id = ? AND COALESCE(role, 'admin') <> 'deleted'", (admin_id,))
+    if cur.rowcount == 0:
+        raise NotFoundError("Admin not found")
 
 
 ADMIN_COLUMNS = ("name", "phone_number", "email", "image_url", "role")
@@ -281,6 +334,9 @@ def list_admins(conn, filters, limit, offset, sort, order):
     if filters.get("role"):
         where.append("COALESCE(role, 'admin') = ?")
         params.append(filters["role"])
+    if "is_approved" in filters:
+        where.append("CASE WHEN COALESCE(is_approved, 1) IN (1, '1') THEN 1 ELSE 0 END = ?")
+        params.append(1 if filters["is_approved"] else 0)
     where_sql = " WHERE " + " AND ".join(where)
     total = conn.execute(f"SELECT COUNT(*) FROM Admin{where_sql}", params).fetchone()[0]
     direction = "DESC" if order == "desc" else "ASC"

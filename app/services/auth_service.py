@@ -59,12 +59,14 @@ def resolve_role(account_type, row):
 
 
 def ensure_account_active(account_type, row):
-    """Raise for deleted/disabled (401), blocked (403 ACCOUNT_BLOCKED) or unapproved (403)."""
+    """Raise for deleted/disabled (401), blocked (403 ACCOUNT_BLOCKED) or unapproved users/admins (403)."""
     role = resolve_role(account_type, row)
     if role is None:
         if account_type == "admin" and (row["role"] or "").lower() == "disabled":
             raise ApiError("Account is disabled", 403, "ACCOUNT_BLOCKED")
         raise ApiError("Account no longer exists", 401, "UNAUTHORIZED")
+    if account_type == "admin" and "is_approved" in row.keys() and row["is_approved"] is not None             and not _truthy(row["is_approved"]):
+        raise ApiError("Account is not approved yet", 403, "ACCOUNT_NOT_APPROVED")
     if account_type == "user":
         if _truthy(row["block"]):
             raise ApiError("Account is blocked", 403, "ACCOUNT_BLOCKED")

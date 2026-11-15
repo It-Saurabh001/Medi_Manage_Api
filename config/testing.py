@@ -6,6 +6,8 @@ class TestingConfig(BaseConfig):
     TESTING = True
     ENABLE_DOCS = True
     DB_BACKUP_ON_MIGRATE = False
+    ADMIN_SIGNUP_CODE = ""
+    ADMIN_SIGNUP_RATE_LIMIT = 1000  # tests lower it explicitly when checking 429
 
     SECRET_KEY = "test-secret-key-testing-only"
     JWT_SECRET_KEY = "test-jwt-secret-key-testing-only"
