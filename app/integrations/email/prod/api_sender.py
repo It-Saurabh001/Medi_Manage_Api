@@ -41,6 +41,8 @@ class ApiEmailSender(EmailSender):
 
     def send(self, to: str, subject: str, body: str) -> bool:
         if not self.api_key or not self.sender_email:
+            logger.error("Email API %s not configured: key_set=%s sender_set=%s", self.provider,
+                         bool(self.api_key), bool(self.sender_email))
             raise EmailDeliveryError("EMAIL_API_KEY or MAIL_DEFAULT_SENDER is not configured")
         try:
             with urllib.request.urlopen(self._request(to, subject, body), timeout=15) as resp:

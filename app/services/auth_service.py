@@ -127,7 +127,10 @@ def issue_otp(purpose, account_type, account_id, email):
     otp = generate_otp()
     _store().set(otp_key(purpose, account_type, account_id), _hash_otp(otp), ttl_seconds=otp_ttl(purpose))
     try:
-        return send_otp_email(to_email=email, otp=otp, purpose=purpose)
+        sent = send_otp_email(to_email=email, otp=otp, purpose=purpose)
+        if not sent:
+            current_app.logger.error("OTP email not accepted by provider (purpose=%s)", purpose)
+        return sent
     except Exception:
         current_app.logger.exception("OTP email delivery failed (purpose=%s)", purpose)
         return False
@@ -161,10 +164,14 @@ def enforce_resend_cooldown(purpose, account_type, account_id):
     _store().set(key, "1", ttl_seconds=RESEND_COOLDOWN_SECONDS)
 
 
+def clear_resend_cooldown(purpose, account_type, account_id):
+    _store().invalidate("cooldown:" + otp_key(purpose, account_type, account_id))
+
+
 def send_verification_otp(account_type, account_id, email):
     """Email a signup verification code; raises 502 EMAIL_DELIVERY_FAILED instead of failing silently."""
     if not issue_otp("verify", account_type, account_id, email):
-        raise ApiError("Could not send the verification email; try /auth/resend-otp shortly", 502,
+        raise ApiError("Could not send the verification email; please try again shortly", 502,
                        "EMAIL_DELIVERY_FAILED")
 
 

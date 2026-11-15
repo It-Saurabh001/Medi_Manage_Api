@@ -27,6 +27,10 @@ def create_app(config_name=None):
 
     # Configure logging
     configure_logging(app)
+    sender = app.extensions.get("email_sender")
+    app.logger.info("Email sender: %s, provider=%s, key_set=%s, sender_set=%s",
+                    type(sender).__name__, app.config.get("EMAIL_API_PROVIDER"),
+                    bool(app.config.get("EMAIL_API_KEY")), bool(app.config.get("MAIL_DEFAULT_SENDER")))
     if is_prod and not app.config.get("ADMIN_SIGNUP_CODE"):
         app.logger.warning("ADMIN_SIGNUP_CODE is not set: anyone can request an admin account via "
                            "POST /admins/register (accounts still need approval). Set it in production.")

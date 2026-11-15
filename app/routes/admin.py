@@ -117,7 +117,17 @@ def register_admin():
         data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
     location = url_for("admin.get_admin", admin_id=admin_id, _external=True)
     auth.enforce_resend_cooldown("verify", "admin", admin_id)
-    auth.send_verification_otp("admin", admin_id, cleaned["email"])  # 502 EMAIL_DELIVERY_FAILED on failure
+    try:
+        auth.send_verification_otp("admin", admin_id, cleaned["email"])  # 502 EMAIL_DELIVERY_FAILED on failure
+    except Exception:
+        current_app.logger.exception("Admin signup: verification email failed; removing admin %s", admin_id)
+        # Undo the signup so the same email/phone can register again once email delivery works.
+        with db_connection(immediate=True) as conn:
+            conn.execute("DELETE FROM Admin WHERE admin_id = ? AND COALESCE(is_email_verified, 0) = 0", (admin_id,))
+            write_audit(conn, admin_id, "admin", "admin.register_rollback", "admin", admin_id,
+                        {"reason": "email_delivery_failed"})
+        auth.clear_resend_cooldown("verify", "admin", admin_id)
+        raise
     data.update(otp_required=True, otp_expires_in=auth.otp_ttl("verify"))
     message = ("Admin registered." if is_first else "Admin registered. Awaiting approval.")         + " Verification code sent to your email."
     return api_response(data, message, 201, headers={"Location": location})
