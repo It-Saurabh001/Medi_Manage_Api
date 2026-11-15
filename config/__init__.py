@@ -11,8 +11,7 @@ CONFIG_MAP = {
 
 def get_config(config_name=None):
     """Retrieve and validate the configuration class for the given environment."""
-    if config_name is None:
-        config_name = os.getenv("FLASK_ENV", "development").lower()
+    config_name = (config_name or os.getenv("FLASK_ENV") or "development").strip().lower()
 
     config_class = CONFIG_MAP.get(config_name)
     if not config_class:

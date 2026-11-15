@@ -30,9 +30,11 @@ class BaseConfig:
 
     OTP_EXPIRY_SECONDS = _env_int("OTP_EXPIRY_SECONDS", 300)
     EMAIL_VERIFY_OTP_EXPIRY_SECONDS = _env_int("EMAIL_VERIFY_OTP_EXPIRY_SECONDS", 600)
-    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "smtp").lower()
-    EMAIL_API_PROVIDER = os.getenv("EMAIL_API_PROVIDER", "brevo").lower()
-    EMAIL_API_KEY = os.getenv("EMAIL_API_KEY")
+    FLASK_ENV = (os.getenv("FLASK_ENV") or "development").strip().lower()
+    EMAIL_PROVIDER = (os.getenv("EMAIL_PROVIDER") or "dev").strip().lower()
+    EMAIL_BACKEND = (os.getenv("EMAIL_BACKEND") or "smtp").strip().lower()
+    EMAIL_API_PROVIDER = (os.getenv("EMAIL_API_PROVIDER") or "brevo").strip().lower()
+    EMAIL_API_KEY = (os.getenv("EMAIL_API_KEY") or "").strip() or None
 
     # --- API / client contract ---
     API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
