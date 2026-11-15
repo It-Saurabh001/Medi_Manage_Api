@@ -210,12 +210,19 @@ def serialize_admin(row):
         "email": row["email"],
         "phone_number": row["phone_number"],
         "role": role,
-        "is_active": role == "admin",
+        "is_active": role == "admin" and email_is_verified(row),
+        "is_email_verified": email_is_verified(row),
         "is_approved": admin_is_approved(row),
         "is_owner": admin_is_owner(row),
         "image_url": row["image_url"] if "image_url" in keys else None,
         "created_at": to_iso_z(row["date_of_account_creation"]),
     }
+
+
+def email_is_verified(row):
+    """Rows from before the is_email_verified column existed count as verified."""
+    keys = row.keys()
+    return "is_email_verified" not in keys or row["is_email_verified"] is None or _truthy(row["is_email_verified"])
 
 
 def admin_is_approved(row):
@@ -277,16 +284,16 @@ def ensure_admin_unique(conn, email=None, phone=None, exclude_id=None):
         raise ConflictError("Phone number already registered", fields={"phone_number": "already registered"})
 
 
-def insert_admin(conn, cleaned, is_approved=True, is_owner=False, password_hash=None):
+def insert_admin(conn, cleaned, is_approved=True, is_owner=False, password_hash=None, email_verified=True):
     """Insert an admin. `password_hash` lets callers hash outside a write-locked transaction."""
     admin_id = "AID_" + uuid.uuid4().hex[:12]
     try:
         conn.execute(
             """INSERT INTO Admin(admin_id, password, name, email, phone_number, date_of_account_creation, role,
-                   image_url, is_approved, is_owner) VALUES (?, ?, ?, ?, ?, ?, 'admin', ?, ?, ?)""",
+                   image_url, is_approved, is_owner, is_email_verified) VALUES (?, ?, ?, ?, ?, ?, 'admin', ?, ?, ?, ?)""",
             (admin_id, password_hash or hash_password(cleaned["password"]), cleaned["name"], cleaned["email"],
              cleaned.get("phone_number") or None, utc_now_iso(), cleaned.get("image_url"),
-             1 if is_approved else 0, 1 if is_owner else 0),
+             1 if is_approved else 0, 1 if is_owner else 0, 1 if email_verified else 0),
         )
     except sqlite3.IntegrityError as exc:
         if "is_owner" in str(exc):

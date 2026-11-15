@@ -76,6 +76,17 @@ PATHS = {
         [error(400, "VALIDATION_ERROR", "Validation failed", {"email": "is required"})],
         body=ref("ResetRequestInput"), body_example={"email": "priya@example.com", "account_type": "user"},
         multipart=True, public=True)},
+    "/auth/resend-otp": {"post": operation(
+        TAG, "Re-send the signup email-verification OTP (60 s cooldown)", [], 200,
+        envelope({"type": "object", "properties": {"otp_expires_in": {"type": "integer"}}}),
+        {"status": 200, "message": "If this account exists and is not verified, a new code has been sent.",
+         "data": {"otp_expires_in": 600}},
+        [error(400, "VALIDATION_ERROR", "Validation failed", {"email": "is required"}),
+         error(429, "RATE_LIMITED", "Please wait 60 seconds before requesting a new code"),
+         error(502, "EMAIL_DELIVERY_FAILED", "Could not send the verification email")],
+        body=ref("ResetRequestInput"), body_example={"email": "priya@example.com", "account_type": "admin"},
+        multipart=True, public=True,
+        notes="Verify with POST /auth/verify-otp {email, otp, account_type}; success sets is_email_verified.")},
     "/auth/password-reset/confirm": {"post": operation(
         TAG, "Set a new password with the reset OTP", [], 200, envelope({"nullable": True}),
         {"status": 200, "message": "Password has been reset. Please log in.", "data": None},

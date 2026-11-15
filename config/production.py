@@ -34,6 +34,9 @@ class ProductionConfig(BaseConfig):
         cls.SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
         cls.MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", cls.MAIL_DEFAULT_SENDER)
         cls.REDIS_URL = os.getenv("REDIS_URL", cls.REDIS_URL)
+        cls.EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", cls.EMAIL_BACKEND).lower()
+        cls.EMAIL_API_PROVIDER = os.getenv("EMAIL_API_PROVIDER", cls.EMAIL_API_PROVIDER).lower()
+        cls.EMAIL_API_KEY = os.getenv("EMAIL_API_KEY", cls.EMAIL_API_KEY)
 
         missing = []
         required_vars = [
@@ -42,13 +45,14 @@ class ProductionConfig(BaseConfig):
             ("CLOUDINARY_CLOUD_NAME", cls.CLOUDINARY_CLOUD_NAME),
             ("CLOUDINARY_API_KEY", cls.CLOUDINARY_API_KEY),
             ("CLOUDINARY_API_SECRET", cls.CLOUDINARY_API_SECRET),
-            ("SMTP_HOST", cls.SMTP_HOST),
-            ("SMTP_PORT", cls.SMTP_PORT),
-            ("SMTP_USER", cls.SMTP_USER),
-            ("SMTP_PASS", cls.SMTP_PASS),
             ("MAIL_DEFAULT_SENDER", cls.MAIL_DEFAULT_SENDER),
             ("REDIS_URL", cls.REDIS_URL),
         ]
+        if cls.EMAIL_BACKEND == "api":
+            required_vars.append(("EMAIL_API_KEY", cls.EMAIL_API_KEY))
+        else:
+            required_vars += [("SMTP_HOST", cls.SMTP_HOST), ("SMTP_PORT", cls.SMTP_PORT),
+                              ("SMTP_USER", cls.SMTP_USER), ("SMTP_PASS", cls.SMTP_PASS)]
         for name, value in required_vars:
             if not value:
                 missing.append(name)

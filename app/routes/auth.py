@@ -41,6 +41,7 @@ def login():
         conn.close()
     if row is None:
         raise ApiError("Invalid email or password", 401, "UNAUTHORIZED")
+    auth.ensure_email_verified(row)
     auth.ensure_account_active(account_type, row)
     account_id = auth.account_id_of(account_type, row)
     if not auth.issue_otp("login", account_type, account_id, row["email"]):
@@ -53,9 +54,54 @@ def login():
     }, "Verification code sent to your email")
 
 
+def _email_otp_validator(payload, with_otp):
+    v = Validator(payload)
+    v.string("email", required=True, max_len=200)
+    if with_otp:
+        v.string("otp", required=True, min_len=6, max_len=6)
+    v.enum("account_type", auth.ACCOUNT_TYPES, default="admin")
+    return v.validate()
+
+
+def _verify_email_otp(payload):
+    """Signup email verification: {email, otp, account_type} -> is_email_verified=1."""
+    cleaned = _email_otp_validator(payload, with_otp=True)
+    account_type = cleaned["account_type"]
+    with db_connection() as conn:
+        row = auth.find_account_by_email(conn, account_type, cleaned["email"])
+    if row is None:
+        raise ValidationError("Invalid verification code", fields={"otp": "incorrect"})
+    account_id = auth.account_id_of(account_type, row)
+    auth.check_otp("verify", account_type, account_id, cleaned["otp"])
+    with db_connection(immediate=True) as conn:
+        auth.mark_email_verified(conn, account_type, account_id)
+        write_audit(conn, account_id, account_type, "auth.email_verified", account_type, account_id, {})
+    return api_response({"account_id": account_id, "account_type": account_type, "email_verified": True},
+                        "Email verified. You can now log in.")
+
+
+@auth_bp.post("/auth/resend-otp")
+def resend_otp():
+    cleaned = _email_otp_validator(request_payload(), with_otp=False)
+    account_type = cleaned["account_type"]
+    with db_connection() as conn:
+        row = auth.find_account_by_email(conn, account_type, cleaned["email"])
+    generic = "If this account exists and is not verified, a new code has been sent."
+    if row is None or acc.email_is_verified(row):
+        return api_response({"otp_expires_in": auth.otp_ttl("verify")}, generic)
+    account_id = auth.account_id_of(account_type, row)
+    auth.enforce_resend_cooldown("verify", account_type, account_id)
+    auth.send_verification_otp(account_type, account_id, row["email"])
+    return api_response({"otp_expires_in": auth.otp_ttl("verify"),
+                         "resend_cooldown": auth.RESEND_COOLDOWN_SECONDS}, generic)
+
+
 @auth_bp.post("/auth/verify-otp")
 def verify_otp():
-    v = Validator(request_payload())
+    payload = request_payload()
+    if "email" in payload and "account_id" not in payload:
+        return _verify_email_otp(payload)
+    v = Validator(payload)
     v.string("account_id", required=True, max_len=64)
     v.string("otp", required=True, min_len=6, max_len=6)
     v.enum("account_type", auth.ACCOUNT_TYPES, default="user")

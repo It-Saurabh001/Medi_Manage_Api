@@ -4,6 +4,8 @@ OTP keys: `login:{account_type}:{id}` and `reset:{account_type}:{id}`; TTL from
 config `OTP_EXPIRY_SECONDS`; max MAX_OTP_ATTEMPTS verifications, then the OTP is invalidated.
 OTPs are never returned in any response or logged.
 """
+import hashlib
+import hmac
 import secrets
 
 from flask import current_app
@@ -15,7 +17,8 @@ from app.services.email_service import send_otp_email
 
 ACCOUNT_TYPES = ("user", "admin")
 MAX_OTP_ATTEMPTS = 5
-PURPOSES = ("login", "reset")
+PURPOSES = ("login", "reset", "verify")
+RESEND_COOLDOWN_SECONDS = 60
 
 _TABLES = {
     "user": ("Users", "user_id"),
@@ -99,8 +102,16 @@ def _store():
     return current_app.extensions["otp_store"]
 
 
-def otp_ttl():
+def otp_ttl(purpose=None):
+    if purpose == "verify":
+        return int(current_app.config.get("EMAIL_VERIFY_OTP_EXPIRY_SECONDS", 600))
     return int(current_app.config.get("OTP_EXPIRY_SECONDS", 300))
+
+
+def _hash_otp(otp):
+    """Only an HMAC-SHA256 of the OTP is stored; the plain code exists only in the email."""
+    secret = str(current_app.config.get("SECRET_KEY") or "").encode()
+    return hmac.new(secret, str(otp).strip().encode(), hashlib.sha256).hexdigest()
 
 
 def otp_key(purpose, account_type, account_id):
@@ -114,7 +125,7 @@ def generate_otp():
 def issue_otp(purpose, account_type, account_id, email):
     """Store a fresh OTP and email it. Returns True if the email was handed to the provider."""
     otp = generate_otp()
-    _store().set(otp_key(purpose, account_type, account_id), otp, ttl_seconds=otp_ttl())
+    _store().set(otp_key(purpose, account_type, account_id), _hash_otp(otp), ttl_seconds=otp_ttl(purpose))
     try:
         return send_otp_email(to_email=email, otp=otp, purpose=purpose)
     except Exception:
@@ -128,17 +139,43 @@ def check_otp(purpose, account_type, account_id, candidate):
     if not store.exists(key):
         raise ValidationError("Verification code expired or not requested",
                               fields={"otp": "request a new code"})
-    attempts = store.increment_attempts(key, ttl_seconds=otp_ttl())
+    attempts = store.increment_attempts(key, ttl_seconds=otp_ttl(purpose))
     if attempts > MAX_OTP_ATTEMPTS:
         store.invalidate(key)
         raise ApiError("Too many incorrect attempts; request a new code", 429, "RATE_LIMITED")
-    if store.verify_and_consume(key, str(candidate).strip()):
+    if store.verify_and_consume(key, _hash_otp(candidate)):
         return
     if attempts >= MAX_OTP_ATTEMPTS:
         store.invalidate(key)
         raise ApiError("Too many incorrect attempts; request a new code", 429, "RATE_LIMITED")
     raise ValidationError("Invalid verification code",
                           fields={"otp": f"incorrect; {MAX_OTP_ATTEMPTS - attempts} attempt(s) left"})
+
+
+def enforce_resend_cooldown(purpose, account_type, account_id):
+    """429 if a code was sent less than RESEND_COOLDOWN_SECONDS ago; otherwise start a new cooldown."""
+    key = "cooldown:" + otp_key(purpose, account_type, account_id)
+    if _store().exists(key):
+        raise ApiError(f"Please wait {RESEND_COOLDOWN_SECONDS} seconds before requesting a new code", 429,
+                       "RATE_LIMITED", headers={"Retry-After": str(RESEND_COOLDOWN_SECONDS)})
+    _store().set(key, "1", ttl_seconds=RESEND_COOLDOWN_SECONDS)
+
+
+def send_verification_otp(account_type, account_id, email):
+    """Email a signup verification code; raises 502 EMAIL_DELIVERY_FAILED instead of failing silently."""
+    if not issue_otp("verify", account_type, account_id, email):
+        raise ApiError("Could not send the verification email; try /auth/resend-otp shortly", 502,
+                       "EMAIL_DELIVERY_FAILED")
+
+
+def mark_email_verified(conn, account_type, account_id):
+    table, id_col = _TABLES[account_type]
+    conn.execute(f"UPDATE {table} SET is_email_verified = 1 WHERE {id_col} = ?", (account_id,))
+
+
+def ensure_email_verified(row):
+    if "is_email_verified" in row.keys() and row["is_email_verified"] is not None             and not _truthy(row["is_email_verified"]):
+        raise ApiError("Email is not verified. Enter the code sent to your email.", 403, "EMAIL_NOT_VERIFIED")
 
 
 # ------------------------------------------------------------------ tokens

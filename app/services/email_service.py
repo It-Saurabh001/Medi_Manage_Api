@@ -6,6 +6,7 @@ from app.integrations.email.factory import get_email_sender
 _SUBJECTS = {
     "login": "Your login verification code",
     "reset": "Your password reset code",
+    "verify": "Verify your email address",
 }
 
 

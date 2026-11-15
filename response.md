@@ -648,6 +648,13 @@ Unknown routes return 404 `NOT_FOUND`; wrong methods 405 `METHOD_NOT_ALLOWED`. E
   | 429 | `RATE_LIMITED` | `{"status": 429, "message": "Too many incorrect attempts; request a new code", "code": "RATE_LIMITED"}` |
 - **Notes:** Single-use reset OTP, max 5 attempts. Writes an audit entry `auth.password_reset`.
 
+### POST /api/v1/auth/resend-otp
+
+Public. Body `{email, account_type}` (default `admin`). Re-sends the signup email-verification OTP (10 min expiry,
+60 s cooldown -> 429 `RATE_LIMITED`). Same 200 response whether or not the account exists. Verify with
+`POST /api/v1/auth/verify-otp` `{email, otp, account_type}`. Email delivery failure -> 502 `EMAIL_DELIVERY_FAILED`.
+Login on an unverified account -> 403 `EMAIL_NOT_VERIFIED`.
+
 ### 7. POST /api/v1/auth/password-reset/request
 
 - **Role/auth:** public (no token)

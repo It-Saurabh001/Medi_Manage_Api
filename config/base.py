@@ -29,6 +29,10 @@ class BaseConfig:
     CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 
     OTP_EXPIRY_SECONDS = _env_int("OTP_EXPIRY_SECONDS", 300)
+    EMAIL_VERIFY_OTP_EXPIRY_SECONDS = _env_int("EMAIL_VERIFY_OTP_EXPIRY_SECONDS", 600)
+    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "smtp").lower()
+    EMAIL_API_PROVIDER = os.getenv("EMAIL_API_PROVIDER", "brevo").lower()
+    EMAIL_API_KEY = os.getenv("EMAIL_API_KEY")
 
     # --- API / client contract ---
     API_PREFIX = os.getenv("API_PREFIX", "/api/v1")

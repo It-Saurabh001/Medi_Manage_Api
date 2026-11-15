@@ -180,9 +180,11 @@ ADD_COLUMNS = {
         # Admin signup: existing admins keep access (DEFAULT 1 fills existing rows); new signups start at 0.
         ("is_approved", "INTEGER DEFAULT 1"),
         ("is_owner", "INTEGER DEFAULT 0"),
+        ("is_email_verified", "INTEGER DEFAULT 1"),
     ],
     "Users": [
         ("image_url", "VARCHAR(1000) DEFAULT NULL"),
+        ("is_email_verified", "INTEGER DEFAULT 1"),
     ],
     "Products": [
         ("image_url", "VARCHAR(1000) DEFAULT NULL"),

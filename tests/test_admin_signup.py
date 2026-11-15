@@ -17,6 +17,11 @@ def _otp(sender):
     return re.search(r"\b(\d{6})\b", sender.sent_messages[-1]["body"]).group(1)
 
 
+def _verify_email(client, api, email, sender):
+    res = client.post(f"{api}/auth/verify-otp", json={"email": email, "otp": _otp(sender), "account_type": "admin"})
+    assert res.status_code == 200, res.get_json()
+
+
 def _admin_login(client, api, email):
     return client.post(f"{api}/auth/login", json={"email": email, "password": PASSWORD, "account_type": "admin"})
 
@@ -29,12 +34,15 @@ def _audit_actions(app, admin_id):
 
 
 # ------------------------------------------------------------------ signup + approval flow
-def test_first_signup_is_approved_owner(app, client, api):
+def test_first_signup_is_approved_owner(app, client, api, fake_email_sender):
     res = _register(client, api, "owner@example.com")
     assert res.status_code == 201, res.get_json()
     body = res.get_json()
     data = body["data"]
-    assert body["message"] == "Admin registered."
+    assert body["message"] == "Admin registered. Verification code sent to your email."
+    unverified = _admin_login(client, api, "owner@example.com")
+    assert unverified.status_code == 403 and unverified.get_json()["code"] == "EMAIL_NOT_VERIFIED"
+    _verify_email(client, api, "owner@example.com", fake_email_sender)
     assert data["is_approved"] is True and data["is_owner"] is True and data["role"] == "admin"
     assert "password" not in data
     assert res.headers["Location"].endswith(f"/admins/{data['admin_id']}")
@@ -49,7 +57,8 @@ def test_second_signup_needs_approval_then_login_works(app, client, api, admin_h
     res = _register(client, api, "second@example.com", phone_number="+919800000002")
     assert res.status_code == 201
     body = res.get_json()
-    assert body["message"] == "Admin registered. Awaiting approval."
+    assert body["message"] == "Admin registered. Awaiting approval. Verification code sent to your email."
+    _verify_email(client, api, "second@example.com", fake_email_sender)
     admin_id = body["data"]["admin_id"]
     assert body["data"]["is_approved"] is False and body["data"]["is_owner"] is False
 

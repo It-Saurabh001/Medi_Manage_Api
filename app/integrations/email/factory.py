@@ -11,6 +11,9 @@ def get_email_sender(config):
     if provider == "dev":
         module = importlib.import_module("app.integrations.email.dev.smtp_debug_sender")
         return module.SmtpDebugSender(config)
+    elif provider == "prod" and (config.get("EMAIL_BACKEND") or "smtp").lower() == "api":
+        module = importlib.import_module("app.integrations.email.prod.api_sender")
+        return module.ApiEmailSender(config)
     elif provider == "prod":
         module = importlib.import_module("app.integrations.email.prod.smtp_sender")
         return module.SmtpSender(config)

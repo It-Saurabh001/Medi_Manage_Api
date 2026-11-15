@@ -110,13 +110,16 @@ def register_admin():
         acc.ensure_admin_unique(conn, cleaned["email"], cleaned.get("phone_number"))
         is_first = not acc.has_live_admin(conn)
         admin_id = acc.insert_admin(conn, cleaned, is_approved=is_first, is_owner=is_first,
-                                    password_hash=password_hash)
+                                    password_hash=password_hash, email_verified=False)
         details = {k: val for k, val in cleaned.items() if k != "password"}
         details.update(is_approved=is_first, is_owner=is_first)
         write_audit(conn, admin_id, "admin", "admin.register", "admin", admin_id, details)
         data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
     location = url_for("admin.get_admin", admin_id=admin_id, _external=True)
-    message = "Admin registered." if is_first else "Admin registered. Awaiting approval."
+    auth.enforce_resend_cooldown("verify", "admin", admin_id)
+    auth.send_verification_otp("admin", admin_id, cleaned["email"])  # 502 EMAIL_DELIVERY_FAILED on failure
+    data.update(otp_required=True, otp_expires_in=auth.otp_ttl("verify"))
+    message = ("Admin registered." if is_first else "Admin registered. Awaiting approval.")         + " Verification code sent to your email."
     return api_response(data, message, 201, headers={"Location": location})
 
 
