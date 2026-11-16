@@ -4,6 +4,7 @@ Replaces /admin/login, /admin/verifyOtp, /admin/refreshToken, /admin/requestAdmi
 /admin/resetAdminPasswordWithOtp, /user/login, /user/verifyUserOtp, /user/requestUserPasswordReset
 and /user/resetUserPasswordWithOtp.
 """
+from flask import current_app
 from flask_jwt_extended import decode_token, get_jwt, get_jwt_identity, jwt_required
 
 from app.db import db_connection, get_db
@@ -167,8 +168,13 @@ def password_reset_request():
         row = auth.find_account_by_email(conn, cleaned["account_type"], cleaned["email"])
     finally:
         conn.close()
-    if row is not None and auth.resolve_role(cleaned["account_type"], row) is not None:
-        auth.issue_otp("reset", cleaned["account_type"], auth.account_id_of(cleaned["account_type"], row), row["email"])
+    if row is None:
+        current_app.logger.warning("password-reset: no %s account found for requested email", cleaned["account_type"])
+    elif auth.resolve_role(cleaned["account_type"], row) is None:
+        current_app.logger.warning("password-reset: %s account is deleted/disabled", cleaned["account_type"])
+    else:
+        sent = auth.issue_otp("reset", cleaned["account_type"], auth.account_id_of(cleaned["account_type"], row), row["email"])
+        current_app.logger.warning("password-reset: account found, email handed to provider=%s", sent)
     # Identical response whether or not the account exists (no user enumeration).
     return api_response({"otp_expires_in": auth.otp_ttl()}, RESET_MESSAGE)
 
