@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements/prod.txt
 COPY --chown=appuser:appgroup config/ ./config/
 COPY --chown=appuser:appgroup app/ ./app/
 COPY --chown=appuser:appgroup wsgi.py ./
-COPY --chown=appuser:appgroup scripts/prod/start.sh ./scripts/prod/start.sh
+COPY --chown=appuser:appgroup scripts/prod/start.sh scripts/prod/migrate.py ./scripts/prod/
 RUN chmod +x ./scripts/prod/start.sh
 
 USER appuser

@@ -43,8 +43,21 @@ def test_db_path():
     _remove_db_files(db_file)
 
 
+@pytest.fixture(scope="session")
+def turso_fake(test_db_path):
+    """TEST_DB_BACKEND=turso-fake runs every test through the Turso HTTP client (app/turso_http.py)
+    against an in-process Hrana server backed by the same test DB file."""
+    if os.getenv("TEST_DB_BACKEND", "").lower() != "turso-fake":
+        yield None
+        return
+    from tests.hrana_fake import FakeHranaServer
+    server = FakeHranaServer(test_db_path)
+    yield server
+    server.shutdown()
+
+
 @pytest.fixture
-def app(test_db_path):
+def app(test_db_path, turso_fake):
     _remove_db_files(test_db_path)
     os.environ["DATABASE_NAME"] = test_db_path
     os.environ["FLASK_ENV"] = "testing"
@@ -52,6 +65,10 @@ def app(test_db_path):
 
     application = create_app("testing")
     application.config["DATABASE_NAME"] = test_db_path
+    if turso_fake is not None:
+        from tests.hrana_fake import TOKEN
+        application.config["TURSO_DATABASE_URL"] = turso_fake.url
+        application.config["TURSO_AUTH_TOKEN"] = TOKEN
     fake_sender = FakeEmailSender()
     application.extensions["email_sender"] = fake_sender
 
@@ -60,6 +77,10 @@ def app(test_db_path):
 
     yield application
 
+    if turso_fake is not None:
+        leaked = turso_fake.open_streams()
+        turso_fake.close_streams()
+        assert leaked == 0, f"{leaked} Turso stream(s) left open (connection not closed/committed)"
     _remove_db_files(test_db_path)
 
 
