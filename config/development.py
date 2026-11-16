@@ -11,6 +11,8 @@ class DevelopmentConfig(BaseConfig):
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-fallback-secret-key-456")
 
     EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "dev")
+    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "smtp")
+    EMAIL_API_KEY = (os.getenv("EMAIL_API_KEY") or "").strip() or None
     OTP_STORE_PROVIDER = os.getenv("OTP_STORE_PROVIDER", "dev")
 
     SMTP_HOST = os.getenv("SMTP_HOST", "localhost")
