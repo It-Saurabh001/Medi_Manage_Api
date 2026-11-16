@@ -4,4 +4,6 @@ cloudinary==1.44.2
 python-dotenv==1.2.2
 Werkzeug==3.1.8
 Flask-Cors==6.0.1
+# Turso (hosted libSQL) driver; used only when TURSO_DATABASE_URL is set (see app/db.py)
+libsql==0.1.11
 # Swagger UI is loaded from jsDelivr, pinned to swagger-ui-dist 5.17.14 in app/routes/docs.py

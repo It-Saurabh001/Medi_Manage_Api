@@ -21,6 +21,11 @@ class BaseConfig:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
     DATABASE_NAME = os.getenv("DATABASE_NAME", "My_Medical_Shope.db")
+    # Hosted libSQL (Turso). When TURSO_DATABASE_URL is set it is used instead of the local file.
+    TURSO_DATABASE_URL = (os.getenv("TURSO_DATABASE_URL") or "").strip()
+    TURSO_AUTH_TOKEN = (os.getenv("TURSO_AUTH_TOKEN") or "").strip()
+    # sqlite (default) or libsql; libsql on a local file runs the code through the Turso driver
+    DB_DRIVER = (os.getenv("DB_DRIVER") or "sqlite").strip().lower()
     # Take a `<db>.bak-<timestamp>` copy before a migration changes an existing DB file
     DB_BACKUP_ON_MIGRATE = _env_bool("DB_BACKUP_ON_MIGRATE", True)
 

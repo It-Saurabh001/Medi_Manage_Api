@@ -8,6 +8,8 @@ app = create_app(env)
 with app.app_context():
     from app.services.db_init import init_db
     init_db(backup=False)
+    from app.services.bootstrap import bootstrap_admin
+    bootstrap_admin()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=app.config.get("DEBUG", False))

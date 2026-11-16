@@ -31,6 +31,13 @@ def create_app(config_name=None):
     app.logger.info("Email sender: %s, provider=%s, key_set=%s, sender_set=%s",
                     type(sender).__name__, app.config.get("EMAIL_API_PROVIDER"),
                     bool(app.config.get("EMAIL_API_KEY")), bool(app.config.get("MAIL_DEFAULT_SENDER")))
+    if is_prod:
+        if app.config.get("TURSO_DATABASE_URL"):
+            app.logger.info("Database: Turso (hosted libSQL)")
+        else:
+            app.logger.warning("TURSO_DATABASE_URL is not set: using the local SQLite file %s. On hosts with an "
+                               "ephemeral disk (e.g. Render free) all data is lost on every restart or deploy.",
+                               app.config.get("DATABASE_NAME"))
     if is_prod and not app.config.get("ADMIN_SIGNUP_CODE"):
         app.logger.warning("ADMIN_SIGNUP_CODE is not set: anyone can request an admin account via "
                            "POST /admins/register (accounts still need approval). Set it in production.")

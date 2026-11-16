@@ -11,7 +11,7 @@ import sqlite3
 from flask import current_app, has_app_context
 from werkzeug.security import generate_password_hash
 
-from app.db import get_database_name, get_db
+from app.db import get_database_name, get_db, is_remote, turso_url
 from app.utils.timeutil import utc_now, utc_now_iso
 
 log = logging.getLogger(__name__)
@@ -304,6 +304,8 @@ def backup_database(db_path):
 
 def _backup_if_needed(db_path, backup):
     """Back up once per process per DB path, only if the file exists and changes are pending."""
+    if is_remote(db_path):
+        return None  # Turso keeps its own point-in-time backups; there is no local file to copy
     key = os.path.abspath(db_path)
     if key in _BACKED_UP or not _backup_enabled(backup):
         return None
@@ -440,7 +442,7 @@ def init_db(db_name=None, backup=None):
     backup_path = _backup_if_needed(db_path, backup)
     createTable(db_path, backup=False)
     updateTable(db_path, backup=False)
-    return {"database": db_path, "backup": backup_path}
+    return {"database": turso_url() if is_remote(db_path) else db_path, "backup": backup_path}
 
 
 def migrate_passwords(db_name=None):

@@ -48,6 +48,7 @@ def app(test_db_path):
     _remove_db_files(test_db_path)
     os.environ["DATABASE_NAME"] = test_db_path
     os.environ["FLASK_ENV"] = "testing"
+    os.environ.pop("TURSO_DATABASE_URL", None)  # never let tests touch a real hosted database
 
     application = create_app("testing")
     application.config["DATABASE_NAME"] = test_db_path

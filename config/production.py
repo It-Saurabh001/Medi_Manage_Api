@@ -34,6 +34,8 @@ class ProductionConfig(BaseConfig):
         cls.SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
         cls.MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", cls.MAIL_DEFAULT_SENDER)
         cls.REDIS_URL = os.getenv("REDIS_URL", cls.REDIS_URL)
+        cls.TURSO_DATABASE_URL = (os.getenv("TURSO_DATABASE_URL") or cls.TURSO_DATABASE_URL or "").strip()
+        cls.TURSO_AUTH_TOKEN = (os.getenv("TURSO_AUTH_TOKEN") or cls.TURSO_AUTH_TOKEN or "").strip()
         cls.EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", cls.EMAIL_BACKEND).lower()
         cls.EMAIL_API_PROVIDER = os.getenv("EMAIL_API_PROVIDER", cls.EMAIL_API_PROVIDER).lower()
         cls.EMAIL_API_KEY = os.getenv("EMAIL_API_KEY", cls.EMAIL_API_KEY)
@@ -53,6 +55,8 @@ class ProductionConfig(BaseConfig):
         else:
             required_vars += [("SMTP_HOST", cls.SMTP_HOST), ("SMTP_PORT", cls.SMTP_PORT),
                               ("SMTP_USER", cls.SMTP_USER), ("SMTP_PASS", cls.SMTP_PASS)]
+        if cls.TURSO_DATABASE_URL:
+            required_vars.append(("TURSO_AUTH_TOKEN", cls.TURSO_AUTH_TOKEN))
         for name, value in required_vars:
             if not value:
                 missing.append(name)
