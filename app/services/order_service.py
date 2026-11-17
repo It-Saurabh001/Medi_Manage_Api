@@ -56,6 +56,10 @@ class AlreadySold(ApiError):
     message = "Order has already been sold"
 
 
+# Doctor name stored when a customer orders a prescription medicine without a prescription.
+SELF_PRESCRIBED = "Self prescribed"
+
+
 class PrescriptionRequired(ApiError):
     status = 400
     code = "PRESCRIPTION_REQUIRED"

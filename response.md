@@ -2944,7 +2944,6 @@ Login on an unverified account -> 403 `EMAIL_NOT_VERIFIED`.
 - **Errors:**
   | HTTP | code | Example |
   | :--- | :--- | :--- |
-  | 400 | `PRESCRIPTION_REQUIRED` | `{"code": "PRESCRIPTION_REQUIRED", "fields": {"doctor_name": "required for this product", "prescription_url": "required for this product (or upload 'prescription')"}, "message": "This product requires a prescription", "status": 400}` |
   | 400 | `VALIDATION_ERROR` | `{"code": "VALIDATION_ERROR", "fields": {"quantity": "must be >= 1"}, "message": "Validation failed", "status": 400}` |
   | 401 | `TOKEN_EXPIRED` | `{"status": 401, "message": "Token has expired", "code": "TOKEN_EXPIRED"}` |
   | 401 | `TOKEN_INVALID` | `{"status": 401, "message": "Invalid token", "code": "TOKEN_INVALID"}` |
@@ -2957,7 +2956,7 @@ Login on an unverified account -> 403 `EMAIL_NOT_VERIFIED`.
   | 409 | `OUT_OF_STOCK` | `{"code": "OUT_OF_STOCK", "fields": {"quantity": "available: 105"}, "message": "Only 105 unit(s) available", "status": 409}` |
   | 413 | `PAYLOAD_TOO_LARGE` | `{"status": 413, "message": "...", "code": "PAYLOAD_TOO_LARGE"}` (unverified) |
   | 415 | `UNSUPPORTED_MEDIA_TYPE` | `{"status": 415, "message": "...", "code": "UNSUPPORTED_MEDIA_TYPE"}` (unverified) |
-- **Notes:** Customer only (admin token -> 403). Idempotent via `Idempotency-Key`. Stock is checked here and deducted only at /sell. Prescription-schedule products need a prescription (file `prescription` or `prescription_url`) else 400 PRESCRIPTION_REQUIRED. Blocked/unapproved customers -> 403. 201 + `Location`. `Location` header example: `http://localhost/api/v1/orders/ORD_f828d7b2e6d6`.
+- **Notes:** Customer only (admin token -> 403). Idempotent via `Idempotency-Key`. Stock is checked here and deducted only at /sell. Prescription-schedule products: a prescription (file `prescription` or `prescription_url`) is optional. Without one and without `doctor_name` the order is stored with `doctor_name = "Self prescribed"` (self-prescribed); with a prescription but no doctor name it is `"Self"`. The admin must still verify (`verify-prescription`, allowed without a file for self-prescribed orders) before `/sell`. Blocked/unapproved customers -> 403. 201 + `Location`. `Location` header example: `http://localhost/api/v1/orders/ORD_f828d7b2e6d6`.
 
 ### 51. GET /api/v1/orders/{order_id}
 
@@ -3549,7 +3548,7 @@ Login on an unverified account -> 403 `EMAIL_NOT_VERIFIED`.
   | 403 | `FORBIDDEN` | `{"status": 403, "message": "Access Forbidden", "code": "FORBIDDEN"}` |
   | 404 | `NOT_FOUND` | `{"status": 404, "message": "...", "code": "NOT_FOUND"}` (unverified) |
   | 409 | `INVALID_TRANSITION` | `{"status": 409, "message": "...", "code": "INVALID_TRANSITION"}` (unverified) |
-- **Notes:** Required before selling a prescription order.
+- **Notes:** Required before selling a prescription order. Works without an attached file (admin accepts a self-prescribed order).
 
 ### 61. GET /api/v1/users/{user_id}/orders
 

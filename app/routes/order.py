@@ -155,14 +155,11 @@ def create_order():
         raise osvc.ConflictError("Product is not available", fields={"product_id": "inactive product"})
     rx_required = pjson["requires_prescription"] or pjson["schedule_type"] in product_service.RX_SCHEDULES
     has_file = bool(request.files.get("prescription") and request.files["prescription"].filename)
-    if rx_required:
-        missing = {}
-        if not cleaned["prescription_url"] and not has_file:
-            missing["prescription_url"] = "required for this product (or upload 'prescription')"
-        if not cleaned["doctor_name"]:
-            missing["doctor_name"] = "required for this product"
-        if missing:
-            raise osvc.PrescriptionRequired(fields=missing)
+    if rx_required and not cleaned["doctor_name"]:
+        # No prescription details: the order is placed as self-prescribed; the pharmacy reviews it
+        # (verify-prescription) before it can be sold.
+        has_rx = bool(cleaned["prescription_url"]) or has_file
+        cleaned["doctor_name"] = "Self" if has_rx else osvc.SELF_PRESCRIBED
     if cleaned["quantity"] > pjson["sellable_stock"]:
         raise stock_service.OutOfStock(f"Only {pjson['sellable_stock']} unit(s) available",
                                        fields={"quantity": f"available: {pjson['sellable_stock']}"})
@@ -301,8 +298,7 @@ def verify_prescription(order_id):
         row = osvc.fetch_order(conn, order_id)
         if osvc.order_status(row) not in ("pending", "approved"):
             raise osvc.InvalidTransition("Prescription can only be verified before the sale")
-        if verified and not row["prescription_url"]:
-            raise osvc.PrescriptionRequired("No prescription attached to this order")
+        # Without an attached file the admin accepts a self-prescribed order explicitly.
         osvc.set_order_fields(conn, order_id, prescription_verified=1 if verified else 0)
         write_audit(conn, identity, role, "order.verify_prescription", "order", order_id, {"verified": verified})
         data = _order_json(conn, order_id)

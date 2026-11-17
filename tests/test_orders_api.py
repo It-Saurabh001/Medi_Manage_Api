@@ -119,9 +119,14 @@ def test_create_order_rules(env, app, make_headers):
 def test_prescription_required_on_create_and_sell(env):
     pid = _product(env, name="Azithromycin", schedule_type="H")
     _purchase(env, pid, "B1", 10, 200)
-    missing = _order(env, "a", pid)
-    assert missing.status_code == 400 and missing.get_json()["code"] == "PRESCRIPTION_REQUIRED"
-    assert {"prescription_url", "doctor_name"} <= set(missing.get_json()["fields"])
+    self_rx = _order(env, "a", pid)
+    assert self_rx.status_code == 201
+    self_order = self_rx.get_json()["data"]
+    assert self_order["doctor_name"] == "Self prescribed" and self_order["prescription_url"] is None
+    assert _post(env, f"/orders/{self_order['order_id']}/approve").status_code == 200
+    assert _post(env, f"/orders/{self_order['order_id']}/sell").get_json()["code"] == "PRESCRIPTION_NOT_VERIFIED"
+    assert _post(env, f"/orders/{self_order['order_id']}/verify-prescription", json_body={"verified": True}).status_code == 200
+    assert _post(env, f"/orders/{self_order['order_id']}/sell").status_code == 200
     oid = _created(env, "a", pid, prescription_url="https://cdn.test/rx.pdf", doctor_name="Dr. Rao")
     assert _post(env, f"/orders/{oid}/approve").status_code == 200
     not_verified = _post(env, f"/orders/{oid}/sell")
