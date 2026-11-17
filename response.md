@@ -46,6 +46,8 @@ _Single source of truth for the mobile team. Updated in Part 3 (final) on 2026-1
 | `Location` | response | Absolute URL of a created resource (201). |
 | `Allow` | response | Sent with 405. |
 
+- Order objects include `checkout_id` (string, or `null` for orders not placed via `POST /checkouts`). `GET /orders` and `GET /users/{user_id}/orders` accept a `checkout_id` filter.
+
 ### Pagination and `updated_since` sync
 - Every list accepts `limit` (default 20, max 100; larger values are clamped), `offset` (default 0), `sort` (per-endpoint allow-list) and `order` (`asc`/`desc`). Invalid values -> 400 `VALIDATION_ERROR` with `fields`.
 - Next page: `offset += limit` while `offset < pagination.total`.
@@ -161,6 +163,8 @@ Unknown routes return 404 `NOT_FOUND`; wrong methods 405 `METHOD_NOT_ALLOWED`. E
 | 48 | `GET` | `/api/v1/inventory/out-of-stock` | admin | Inventory alerts |
 | 49 | `GET` | `/api/v1/orders` | admin, user (users only see their own resources; others return 404) | Orders |
 | 50 | `POST` | `/api/v1/orders` | user | Orders |
+| 50a | `POST` | `/api/v1/checkouts` | user | Orders |
+| 50b | `GET` | `/api/v1/checkouts/{checkout_id}/invoice` | admin, user (users only see their own resources; others return 404) | Orders |
 | 51 | `GET` | `/api/v1/orders/{order_id}` | admin, user (users only see their own resources; others return 404) | Orders |
 | 52 | `PATCH` | `/api/v1/orders/{order_id}` | admin, user (users only see their own resources; others return 404) | Orders |
 | 53 | `POST` | `/api/v1/orders/{order_id}/approve` | admin | Orders |
@@ -2957,6 +2961,65 @@ Login on an unverified account -> 403 `EMAIL_NOT_VERIFIED`.
   | 413 | `PAYLOAD_TOO_LARGE` | `{"status": 413, "message": "...", "code": "PAYLOAD_TOO_LARGE"}` (unverified) |
   | 415 | `UNSUPPORTED_MEDIA_TYPE` | `{"status": 415, "message": "...", "code": "UNSUPPORTED_MEDIA_TYPE"}` (unverified) |
 - **Notes:** Customer only (admin token -> 403). Idempotent via `Idempotency-Key`. Stock is checked here and deducted only at /sell. Prescription-schedule products: a prescription (file `prescription` or `prescription_url`) is optional. Without one and without `doctor_name` the order is stored with `doctor_name = "Self prescribed"` (self-prescribed); with a prescription but no doctor name it is `"Self"`. The admin must still verify (`verify-prescription`, allowed without a file for self-prescribed orders) before `/sell`. Blocked/unapproved customers -> 403. 201 + `Location`. `Location` header example: `http://localhost/api/v1/orders/ORD_f828d7b2e6d6`.
+
+### 50a. POST /api/v1/checkouts
+
+- **Role/auth:** user (Bearer access token)
+- **Purpose:** Place several products at once. One order is created per item (same shape as `POST /orders`), all sharing one `checkout_id`. All-or-nothing: if any item fails, nothing is inserted.
+- **Headers:** `Authorization: Bearer <access_token>` (required); `Idempotency-Key` (optional; applies to the whole checkout, replays the first response with `Idempotent-Replayed: true`); `X-App-Version` (optional); `Content-Type: application/json` (JSON only)
+- **Path/query params:** none
+- **Request body:**
+  | Field | Type | Required | Validation / notes |
+  | :--- | :--- | :--- | :--- |
+  | `items` | array | required | 1-50 objects |
+  | `items[].product_id` | string | required | active product |
+  | `items[].quantity` | integer | required | min 1, max 1000; the summed quantity per product must be <= `sellable_stock` |
+  | `items[].doctor_name` | string | required for prescription products | `requires_prescription` or schedule H / H1 / X / NARCOTIC |
+  | `items[].patient_name` | string | optional | - |
+  | `items[].prescription_url` | string (uri) | optional | upload the file afterwards with `POST /orders/{order_id}/prescription` |
+  | `message` | string | optional | copied to every order |
+  Example:
+  ```json
+  {
+    "items": [
+      {"product_id": "PROD_c7a36281e0", "quantity": 2},
+      {"product_id": "PROD_20f28a6512", "quantity": 1, "doctor_name": "Dr. Mehta"}
+    ],
+    "message": "Need by evening"
+  }
+  ```
+- **Success:** HTTP 201 (`Location`: `/api/v1/orders?checkout_id=<checkout_id>`)
+  ```json
+  {
+    "data": {
+      "checkout_id": "CHK_3f1a9c2b7d40",
+      "orders": [
+        {"order_id": "ORD_f828d7b2e6d6", "checkout_id": "CHK_3f1a9c2b7d40", "product_id": "PROD_c7a36281e0", "quantity": 2, "status": "pending", "...": "same fields as GET /orders/{order_id}"},
+        {"order_id": "ORD_33ab8ec95c62", "checkout_id": "CHK_3f1a9c2b7d40", "product_id": "PROD_20f28a6512", "quantity": 1, "status": "pending", "...": "..."}
+      ]
+    },
+    "message": "Checkout placed",
+    "status": 201
+  }
+  ```
+- **Errors:** error `fields` keys are `items[<index>].<field>`; the message names the `product_id`.
+  | HTTP | code | Example |
+  | :--- | :--- | :--- |
+  | 400 | `VALIDATION_ERROR` | `{"code": "VALIDATION_ERROR", "fields": {"items[0].quantity": "must be >= 1"}, "message": "Validation failed (PROD_c7a36281e0)", "status": 400}` |
+  | 400 | `PRESCRIPTION_REQUIRED` | `{"code": "PRESCRIPTION_REQUIRED", "fields": {"items[1].doctor_name": "required for this product"}, "message": "This product requires a prescription (PROD_20f28a6512)", "status": 400}` |
+  | 403 | `ACCOUNT_BLOCKED` / `ACCOUNT_NOT_APPROVED` / `FORBIDDEN` | as for `POST /orders` |
+  | 404 | `NOT_FOUND` | `{"code": "NOT_FOUND", "fields": {"items[0].product_id": "not found"}, "message": "Product not found (PROD_x)", "status": 404}` |
+  | 409 | `OUT_OF_STOCK` | `{"code": "OUT_OF_STOCK", "fields": {"items[1].quantity": "available: 3"}, "message": "Only 3 unit(s) available (PROD_20f28a6512)", "status": 409}` |
+  | 409 | `CONFLICT` | inactive product: `{"fields": {"items[0].product_id": "inactive product"}}` |
+- **Notes:** Approve / sell / return / cancel stay per order. Stock is only deducted at `/sell`.
+
+### 50b. GET /api/v1/checkouts/{checkout_id}/invoice
+
+- **Role/auth:** admin, user (users only see their own checkouts; others return 404)
+- **Purpose:** One combined invoice for the sold/returned orders of a checkout (orders not yet sold are left out).
+- **Path params:** `checkout_id` (string, required)
+- **Success:** HTTP 200: same shape as `GET /orders/{order_id}/invoice` plus `checkout_id` and `orders` (the billed orders). `invoice_number` = `INV-<checkout_id>`; `items`, `subtotal`, `gst_total`, `grand_total` are summed over the billed orders; `order` = the first billed order.
+- **Errors:** 404 `NOT_FOUND` (unknown or not yours); 409 `INVALID_TRANSITION` ("Invoice is available only after an order of this checkout is sold").
 
 ### 51. GET /api/v1/orders/{order_id}
 

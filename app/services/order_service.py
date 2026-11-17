@@ -152,6 +152,7 @@ def serialize_order(row):
         "image_url": row["image_url"] or (row["p_image_url"] if "p_image_url" in keys else None),
         "created_at": to_iso_z(row["date_of_order_creation"]),
         "updated_at": to_iso_z(row["updated_at"]),
+        "checkout_id": (row["checkout_id"] or None) if "checkout_id" in keys else None,
     }
 
 
@@ -222,19 +223,20 @@ def fetch_order(conn, order_id, owner_id=None):
     return row
 
 
-def insert_order(conn, user_row, product_row, quantity, data):
+def insert_order(conn, user_row, product_row, quantity, data, checkout_id=None):
     order_id = "ORD_" + uuid.uuid4().hex[:12]
     now = utc_now_iso()
     price = money(product_row["price"])
     conn.execute(
         """INSERT INTO Order_Details(Order_id, user_id, product_id, isApproved, quantity, date_of_order_creation,
                price, total_amount, product_name, user_name, message, category, sold, image_url,
-               prescription_url, doctor_name, patient_name, prescription_verified, status, cancel_reason, updated_at)
-           VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 0, 'pending', '', ?)""",
+               prescription_url, doctor_name, patient_name, prescription_verified, status, cancel_reason, updated_at,
+               checkout_id)
+           VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 0, 'pending', '', ?, ?)""",
         (order_id, user_row["user_id"], product_row["Product_id"], quantity, now, price, money(price * quantity),
          product_row["name"], user_row["name"], data.get("message", ""), product_row["category"],
          product_row["image_url"], data.get("prescription_url", ""), data.get("doctor_name", ""),
-         data.get("patient_name", ""), now),
+         data.get("patient_name", ""), now, checkout_id),
     )
     return order_id
 
@@ -256,7 +258,8 @@ def set_order_fields(conn, order_id, **fields):
 
 def list_orders(conn, filters, limit, offset, sort, order):
     where, params = [], []
-    for key, col in (("user_id", "o.user_id"), ("product_id", "o.product_id"), ("status", "o.status")):
+    for key, col in (("user_id", "o.user_id"), ("product_id", "o.product_id"), ("status", "o.status"),
+                     ("checkout_id", "o.checkout_id")):
         if filters.get(key):
             where.append(f"{col} = ?")
             params.append(filters[key])
@@ -436,5 +439,43 @@ def build_invoice(conn, order_row):
         "gst_total": money(gst_total),
         "grand_total": money(grand_total),
         "issued_at": issued_at,
+        "generated_at": utc_now_iso(),
+    }
+
+
+def fetch_checkout_orders(conn, checkout_id, owner_id=None):
+    """All orders of one checkout (oldest first); other users' checkouts are reported as 404."""
+    sql, params = f"{_ORDER_SELECT} WHERE o.checkout_id = ?", [checkout_id]
+    if owner_id is not None:
+        sql += " AND o.user_id = ?"
+        params.append(owner_id)
+    rows = conn.execute(sql + " ORDER BY o.id ASC", params).fetchall()
+    if not rows:
+        raise NotFoundError("Checkout not found")
+    return rows
+
+
+def build_checkout_invoice(conn, checkout_id, owner_id=None):
+    """One invoice for every sold/returned order of a checkout (same shape as build_invoice)."""
+    rows = fetch_checkout_orders(conn, checkout_id, owner_id)
+    billed = [r for r in rows if order_status(r) in ("sold", "returned")]
+    if not billed:
+        raise InvalidTransition("Invoice is available only after an order of this checkout is sold")
+    parts = [build_invoice(conn, r) for r in billed]
+    items = [item for part in parts for item in part["items"]]
+    issued = sorted(p["issued_at"] for p in parts if p["issued_at"])
+    return {
+        "invoice_number": f"INV-{checkout_id}",
+        "checkout_id": checkout_id,
+        "currency": "INR",
+        "prices_include_gst": True,
+        "order": parts[0]["order"],
+        "orders": [p["order"] for p in parts],
+        "user": parts[0]["user"],
+        "items": items,
+        "subtotal": money(sum(p["subtotal"] for p in parts)),
+        "gst_total": money(sum(p["gst_total"] for p in parts)),
+        "grand_total": money(sum(p["grand_total"] for p in parts)),
+        "issued_at": issued[0] if issued else None,
         "generated_at": utc_now_iso(),
     }

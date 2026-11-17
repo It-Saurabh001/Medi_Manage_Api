@@ -4,6 +4,8 @@ Replaces /user/createOrder, /admin/getAllOrders, /admin/user/getOrdersByUserId, 
 /admin/updateOrder, /admin/approveOrder, /admin/deleteOrder (hard delete removed) and the sell-history
 routes formerly in admin.py (/admin/recordSell, /admin/getSellHistory, ...).
 """
+import uuid
+
 from flask import request, url_for
 
 from app.db import db_connection, get_db
@@ -47,6 +49,7 @@ def _order_list_filters(args, allow_user_filter):
     v.iso_date("from")
     v.iso_date("to")
     v.iso_datetime("updated_since")
+    v.string("checkout_id", max_len=64)
     if allow_user_filter:
         v.string("user_id", max_len=64)
     filters = v.validate("Invalid query parameters")
@@ -176,6 +179,102 @@ def create_order():
         data = _order_json(conn, order_id)
     location = url_for("order.get_order", order_id=order_id, _external=True)
     return api_response(data, "Order placed", 201, headers={"Location": location})
+
+
+# ------------------------------------------------------------------ checkouts (multi-item)
+MAX_CHECKOUT_ITEMS = 50
+
+
+def _checkout_item_error(exc, index, product_id=None):
+    """Re-key a per-item error's fields as items[<index>].<field> and name the product."""
+    fields = {f"items[{index}].{k}": v for k, v in (exc.fields or {}).items()}
+    message = f"{exc.message} ({product_id})" if product_id else exc.message
+    return ValidationError(message, fields=fields or None)
+
+
+@order_bp.post("/checkouts")
+@role_required(USER)
+@idempotent
+def create_checkout():
+    """Several products in one request: one order per item, grouped by checkout_id, all-or-nothing."""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        raise ValidationError("JSON body must be an object")
+    v = Validator(payload)
+    v.string("message", default="", max_len=1000)
+    message = v.validate()["message"]
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        raise ValidationError(fields={"items": "must be a non-empty list"})
+    if len(items) > MAX_CHECKOUT_ITEMS:
+        raise ValidationError(fields={"items": f"at most {MAX_CHECKOUT_ITEMS} items"})
+
+    cleaned_items = []
+    for i, raw in enumerate(items):
+        if not isinstance(raw, dict):
+            raise ValidationError(fields={f"items[{i}]": "must be an object"})
+        iv = Validator(raw)
+        iv.string("product_id", required=True, max_len=64)
+        iv.integer("quantity", required=True, min_value=1, max_value=1000)
+        iv.string("doctor_name", default="", max_len=200)
+        iv.string("patient_name", default="", max_len=200)
+        iv.string("prescription_url", default="", max_len=1000)
+        try:
+            item = iv.validate()
+        except ValidationError as exc:
+            raise _checkout_item_error(exc, i, raw.get("product_id"))
+        if item["prescription_url"] and not _https_url(item["prescription_url"]):
+            raise ValidationError(fields={f"items[{i}].prescription_url": "must be an http(s) URL"})
+        cleaned_items.append(item)
+
+    identity, role = current_identity()
+    checkout_id = "CHK_" + uuid.uuid4().hex[:12]
+    with db_connection(immediate=True) as conn:
+        user = osvc.fetch_customer(conn, identity)
+        osvc.ensure_customer_can_order(user)
+        products, wanted = [], {}
+        for i, item in enumerate(cleaned_items):
+            pid = item["product_id"]
+            try:
+                product = product_service.fetch_product(conn, pid)
+            except NotFoundError:
+                raise NotFoundError(f"Product not found ({pid})", fields={f"items[{i}].product_id": "not found"})
+            pjson = product_service.serialize_product(product)
+            if not pjson["is_active"]:
+                raise osvc.ConflictError(f"Product is not available ({pid})",
+                                         fields={f"items[{i}].product_id": "inactive product"})
+            rx_required = pjson["requires_prescription"] or pjson["schedule_type"] in product_service.RX_SCHEDULES
+            if rx_required and not item["doctor_name"]:
+                raise osvc.PrescriptionRequired(f"This product requires a prescription ({pid})",
+                                                fields={f"items[{i}].doctor_name": "required for this product"})
+            wanted[pid] = wanted.get(pid, 0) + item["quantity"]
+            if wanted[pid] > pjson["sellable_stock"]:
+                raise stock_service.OutOfStock(
+                    f"Only {pjson['sellable_stock']} unit(s) available ({pid})",
+                    fields={f"items[{i}].quantity": f"available: {pjson['sellable_stock']}"})
+            products.append(product)
+        order_ids = []
+        for item, product in zip(cleaned_items, products):
+            data = {**item, "message": message}
+            order_ids.append(osvc.insert_order(conn, user, product, item["quantity"], data, checkout_id=checkout_id))
+        write_audit(conn, identity, role, "checkout.create", "checkout", checkout_id,
+                    {"orders": order_ids, "items": len(order_ids)})
+        orders = [_order_json(conn, oid) for oid in order_ids]
+    location = url_for("order.list_orders", checkout_id=checkout_id, _external=True)
+    return api_response({"checkout_id": checkout_id, "orders": orders}, "Checkout placed", 201,
+                        headers={"Location": location})
+
+
+@order_bp.get("/checkouts/<checkout_id>/invoice")
+@role_required(ANY_ROLE)
+def get_checkout_invoice(checkout_id):
+    _, _, owner = _owner_scope()
+    conn = get_db()
+    try:
+        invoice = osvc.build_checkout_invoice(conn, checkout_id, owner_id=owner)
+    finally:
+        conn.close()
+    return api_response(invoice, "Invoice generated")
 
 
 @order_bp.patch("/orders/<order_id>")

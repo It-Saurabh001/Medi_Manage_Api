@@ -218,6 +218,7 @@ ADD_COLUMNS = {
         ("status", "TEXT DEFAULT 'pending'"),
         ("cancel_reason", "TEXT DEFAULT ''"),
         ("updated_at", "TEXT DEFAULT NULL"),
+        ("checkout_id", "VARCHAR(64) DEFAULT NULL"),
     ],
     "Sell_History": [
         ("image_url", "VARCHAR(1000) DEFAULT NULL"),
@@ -235,6 +236,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_batches_expiry ON Product_Batches(expiry_date)",
     "CREATE INDEX IF NOT EXISTS ix_orders_user ON Order_Details(user_id)",
     "CREATE INDEX IF NOT EXISTS ix_orders_status ON Order_Details(status)",
+    "CREATE INDEX IF NOT EXISTS ix_orders_checkout ON Order_Details(checkout_id)",
     "CREATE INDEX IF NOT EXISTS ix_sell_order ON Sell_History(Order_id)",
     "CREATE INDEX IF NOT EXISTS ix_sell_user ON Sell_History(user_id)",
     "CREATE INDEX IF NOT EXISTS ix_sell_product ON Sell_History(product_id)",

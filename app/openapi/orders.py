@@ -16,7 +16,20 @@ SCHEMAS = {
         "patient_name": {"type": "string"}, "cancel_reason": {"type": "string"},
         "image_url": {"type": "string", "nullable": True},
         "created_at": {"type": "string", "description": "ISO-8601 Z (legacy rows: date)"},
-        "updated_at": {"type": "string", "format": "date-time", "nullable": True}}},
+        "updated_at": {"type": "string", "format": "date-time", "nullable": True},
+        "checkout_id": {"type": "string", "nullable": True,
+                        "description": "set when the order was placed via POST /checkouts (null otherwise)"}}},
+    "CheckoutInput": {"type": "object", "required": ["items"], "properties": {
+        "message": {"type": "string"},
+        "items": {"type": "array", "minItems": 1, "maxItems": 50, "items": {
+            "type": "object", "required": ["product_id", "quantity"], "properties": {
+                "product_id": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1},
+                "doctor_name": {"type": "string", "description": "required for prescription products"},
+                "patient_name": {"type": "string"},
+                "prescription_url": {"type": "string", "format": "uri",
+                                     "description": "optional; upload later via POST /orders/{order_id}/prescription"}}}}}},
+    "Checkout": {"type": "object", "properties": {
+        "checkout_id": {"type": "string"}, "orders": {"type": "array", "items": ref("Order")}}},
     "OrderInput": {"type": "object", "required": ["product_id", "quantity"], "properties": {
         "product_id": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1},
         "message": {"type": "string"}, "doctor_name": {"type": "string"}, "patient_name": {"type": "string"},
@@ -41,13 +54,16 @@ SCHEMAS = {
                            "gst_amount": {"type": "number"}, "line_total": {"type": "number"}}}},
         "subtotal": {"type": "number"}, "gst_total": {"type": "number"}, "grand_total": {"type": "number"},
         "issued_at": {"type": "string", "format": "date-time"},
-        "generated_at": {"type": "string", "format": "date-time"}}},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "checkout_id": {"type": "string", "description": "combined checkout invoice only"},
+        "orders": {"type": "array", "items": ref("Order"), "description": "combined checkout invoice only"}}},
 }
 
 _ORDER_FILTERS = [
     q("status", {"type": "string", "enum": _STATUSES}), q("product_id", {"type": "string"}),
     q("user_id", {"type": "string"}, "admin only"), q("from", {"type": "string", "format": "date"}),
     q("to", {"type": "string", "format": "date"}), q("updated_since", {"type": "string", "format": "date-time"}),
+    q("checkout_id", {"type": "string"}),
     sort(["created_at", "updated_at", "total_amount", "status"], "created_at"),
 ] + PAGINATION
 
@@ -72,6 +88,20 @@ PATHS = {
                     "409": err("OUT_OF_STOCK", "CONFLICT"), "413": err("PAYLOAD_TOO_LARGE"),
                     "415": err("UNSUPPORTED_MEDIA_TYPE")},
                    body=ref("OrderInput"), idempotent=True),
+    },
+    "/checkouts": {
+        "post": op("Orders", "Place several products at once: one order per item grouped by checkout_id, "
+                   "all-or-nothing; error fields are keyed items[<index>].<field>", USER,
+                   {**ok(envelope(ref("Checkout")), "Created", "201", LOCATION),
+                    "400": err("VALIDATION_ERROR", "PRESCRIPTION_REQUIRED"),
+                    "403": err("ACCOUNT_BLOCKED", "ACCOUNT_NOT_APPROVED", "FORBIDDEN"), "404": err("NOT_FOUND"),
+                    "409": err("OUT_OF_STOCK", "CONFLICT")},
+                   body=ref("CheckoutInput"), idempotent=True),
+    },
+    "/checkouts/{checkout_id}/invoice": {
+        "get": op("Orders", "Combined invoice of the sold/returned orders of a checkout", ANY,
+                  {**ok(envelope(ref("Invoice"))), "404": err("NOT_FOUND"), "409": err("INVALID_TRANSITION")},
+                  [p("checkout_id")]),
     },
     "/users/{user_id}/orders": {
         "get": op("Orders", "List a user's orders (users: own id only)", ANY,
