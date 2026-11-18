@@ -1,40 +1,107 @@
-# Environment & secrets
+*
+!*/
+
+# --- Public project files ---
+!.gitignore
+!LICENSE
+!README.md
+!Dockerfile
+!.dockerignore
+!docker-compose.yml
+!wsgi.py
+!requirements.txt
+!.env.example
+!.env.production.example
+!devstart.bat
+!start_mail.bat
+
+# --- Application source ---
+!app/
+!app/**
+!config/
+!config/**
+!requirements/
+!requirements/**
+!scripts/
+!scripts/**
+!tests/
+!tests/**
+
+# --- Keep internal documentation private ---
+*.md
+!README.md
+
+# --- Secrets and private configuration ---
 .env
+.env.*
+!.env.example
+!.env.production.example
+*.env
+secrets.*
+*.pem
+*.key
+*.p12
+*.pfx
+google-services.json
+*service-account*.json
+*firebase-adminsdk*.json
 
-# Virtual environment
-.venv/
-
-# Python bytecode & cache
+# --- Python bytecode and caches ---
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
-# Database (and migration backups)
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Databases and migration backups ---
 *.db
 *.db.bak-*
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
 
-# IDE and editor files
-.vscode/
-.idea/
-
-# Archived legacy code
-_archive/
-
-# Logs
-*.log
-app.log
-
-# Test & coverage artifacts
+# --- Test and coverage artifacts ---
 .coverage
+.coverage.*
+htmlcov/
 .pytest_cache/
 
-# Analysis artifacts
+# --- IDE files ---
+.idea/
+*.iml
+.vscode/
+.claude/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Temporary files ---
+*.log
+*.tmp
+*.bak
+*.swp
+scratch_*.py
+tempCodeRunnerFile.py
+
+# --- Archived legacy code ---
+_archive/
+
+# --- Private docs and handoff files ---
+docs/
+**/docs/
+response.md
+endpoint.md
+database.md
+project.md
 project_analysis.md
 project_details.md
-
-
 handoff.md
 RULES.md
-endpoint.md
+CLAUDE.md
