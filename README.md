@@ -94,28 +94,79 @@ Other libraries: Flask-CORS, Werkzeug (password hashing), python-dotenv, aiosmtp
 
 ## How it works
 
-```
-MediUserApp (customer)          Medi Manage API                    MediAdminApp (shop)
-─────────────────────────          ───────────────                    ─────────────────────
-Place order / checkout   ─►     Order = pending             ─►     Sees new order
-Upload prescription      ─►     Prescription stored         ─►     Verifies prescription
-                                Order = approved            ◄─     Approves
-                                Stock deducted (FEFO)       ◄─     Marks as sold
-View invoice             ◄─     Order = sold, invoice ready
+The customer app and shop app use the same API, but perform different parts of the order workflow. The customer places an order and can attach a prescription; the shop reviews it, approves the order, and completes the sale. Inventory is then deducted using FEFO and the customer can view the invoice.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Customer
+    participant UserApp as MediUserApp
+    participant API as Medi Manage API
+    participant AdminApp as MediAdminApp
+    actor Shop as Shop admin
+
+    Customer->>UserApp: Select medicines and place order
+    UserApp->>API: Create order / checkout
+    API-->>UserApp: Order created (pending)
+    opt Prescription required
+        Customer->>UserApp: Upload prescription
+        UserApp->>API: Attach prescription
+        API-->>AdminApp: Prescription available for review
+    end
+    AdminApp->>API: Fetch pending order
+    API-->>AdminApp: Order details and prescription
+    Shop->>AdminApp: Review and approve
+    AdminApp->>API: Approve order
+    API-->>UserApp: Order approved
+    Shop->>AdminApp: Mark order as sold
+    AdminApp->>API: Complete sale
+    Note over API: Deduct stock by FEFO and create invoice
+    API-->>UserApp: Order sold; invoice available
+    UserApp-->>Customer: Display invoice
 ```
 
-**Request flow inside the API**
+### Request flow inside the API
 
-```
-Routes (blueprints)  →  Services (business rules)  →  Database layer  →  SQLite file / Turso
-        │                       │
-   validation, auth       stock, orders, accounts,
-   and roles              email, OTP, uploads
+Each request passes through clear layers. The route handles HTTP concerns and access checks; the service applies pharmacy rules and coordinates data changes; the configured database and integrations handle persistence and external services.
+
+```mermaid
+flowchart TB
+    Client[Android apps / API client]
+
+    subgraph API[Flask application]
+        direction TB
+        Routes[Routes / Blueprints<br/>Parse and validate request<br/>Check JWT, role and app version]
+        Services[Services<br/>Business rules for accounts,<br/>products, stock, orders and reports]
+        Tx[Database transaction<br/>Keep related changes consistent]
+        Response[Standard JSON response<br/>Success data or structured error]
+
+        Routes --> Services
+        Services --> Tx
+        Tx --> Services
+        Services --> Response
+    end
+
+    subgraph Persistence[Persistence]
+        DB[(SQLite / Turso<br/>Application data and stock ledger)]
+    end
+
+    subgraph Integrations[Configured integrations]
+        Redis[(Redis / memory<br/>OTP, rate limits and token blocklist)]
+        Media[Cloudinary<br/>Images and prescriptions]
+        Email[Email provider<br/>OTP and account messages]
+    end
+
+    Client -->|HTTPS / JSON| Routes
+    Tx <--> DB
+    Services <--> Redis
+    Services <--> Media
+    Services <--> Email
+    Response -->|HTTPS / JSON| Client
 ```
 
 - **Routes** validate input, check the JWT and role, and return the standard response.
-- **Services** hold the business rules. Stock and order changes run in one database transaction, so partial updates never happen.
-- **Integrations** (email, OTP store) are chosen by configuration, with separate development and production providers.
+- **Services** contain the business rules. Stock and order changes run in a database transaction, so related updates succeed or roll back together.
+- **Integrations** (email, OTP store and file uploads) are selected by configuration, with separate development and production providers.
 
 ---
 
