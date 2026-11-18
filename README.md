@@ -106,8 +106,8 @@ sequenceDiagram
     actor Shop as Shop admin
 
     Customer->>UserApp: Select medicines and place order
-    UserApp->>API: Create order / checkout
-    API-->>UserApp: Order created (pending)
+    UserApp->>API: Create order or checkout
+    API-->>UserApp: Order created - pending
     opt Prescription required
         Customer->>UserApp: Upload prescription
         UserApp->>API: Attach prescription
@@ -121,7 +121,7 @@ sequenceDiagram
     Shop->>AdminApp: Mark order as sold
     AdminApp->>API: Complete sale
     Note over API: Deduct stock by FEFO and create invoice
-    API-->>UserApp: Order sold; invoice available
+    API-->>UserApp: Order sold and invoice ready
     UserApp-->>Customer: Display invoice
 ```
 
@@ -131,11 +131,11 @@ Each request passes through clear layers. The route handles HTTP concerns and ac
 
 ```mermaid
 flowchart TB
-    Client[Android apps / API client]
+    Client[Android apps or API client]
 
     subgraph API[Flask application]
         direction TB
-        Routes[Routes / Blueprints<br/>Parse and validate request<br/>Check JWT, role and app version]
+        Routes[Routes and Blueprints<br/>Parse and validate request<br/>Check JWT, role and app version]
         Services[Services<br/>Business rules for accounts,<br/>products, stock, orders and reports]
         Tx[Database transaction<br/>Keep related changes consistent]
         Response[Standard JSON response<br/>Success data or structured error]
@@ -147,21 +147,21 @@ flowchart TB
     end
 
     subgraph Persistence[Persistence]
-        DB[(SQLite / Turso<br/>Application data and stock ledger)]
+        DB[(SQLite or Turso<br/>Application data and stock ledger)]
     end
 
     subgraph Integrations[Configured integrations]
-        Redis[(Redis / memory<br/>OTP, rate limits and token blocklist)]
+        Redis[(Redis or memory<br/>OTP, rate limits and token blocklist)]
         Media[Cloudinary<br/>Images and prescriptions]
         Email[Email provider<br/>OTP and account messages]
     end
 
-    Client -->|HTTPS / JSON| Routes
+    Client -->|HTTPS and JSON| Routes
     Tx <--> DB
     Services <--> Redis
     Services <--> Media
     Services <--> Email
-    Response -->|HTTPS / JSON| Client
+    Response -->|HTTPS and JSON| Client
 ```
 
 - **Routes** validate input, check the JWT and role, and return the standard response.
