@@ -1,6 +1,6 @@
 # Medi Manage API
 
-REST API for a medical shop (pharmacy). It powers two Android apps: **MediUserApp** for customers and **MediAdminApp** for the shop owner. It covers accounts, products, batch-wise inventory, orders with prescriptions, sales, invoices and reports.
+REST API for a medical shop (pharmacy). It powers two Android apps: **MediUserApp** for customers and **MediAdminApp** for the shop owner. It covers accounts, products, batch-wise inventory, orders, invoices, prescriptions and reports.
 
 <p>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white">
@@ -13,6 +13,7 @@ REST API for a medical shop (pharmacy). It powers two Android apps: **MediUserAp
   <img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white">
   <img alt="OpenAPI" src="https://img.shields.io/badge/OpenAPI-3.0-6BA539?logo=openapiinitiative&logoColor=white">
   <img alt="pytest" src="https://img.shields.io/badge/tests-170%20passing-0A9EDC?logo=pytest&logoColor=white">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
 </p>
 
 ---
@@ -30,6 +31,8 @@ REST API for a medical shop (pharmacy). It powers two Android apps: **MediUserAp
 - [Testing](#testing)
 - [Error format](#error-format)
 - [Related projects](#related-projects)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -93,7 +96,7 @@ Other libraries: Flask-CORS, Werkzeug (password hashing), python-dotenv, aiosmtp
 
 ```
 MediUserApp (customer)          Medi Manage API                    MediAdminApp (shop)
-──────────────────────          ───────────────                    ───────────────────
+─────────────────────────          ───────────────                    ─────────────────────
 Place order / checkout   ─►     Order = pending             ─►     Sees new order
 Upload prescription      ─►     Prescription stored         ─►     Verifies prescription
                                 Order = approved            ◄─     Approves
@@ -175,7 +178,7 @@ Routes (blueprints)  →  Services (business rules)  →  Database layer  →  S
 
 ## Configuration
 
-All settings come from environment variables: a local `.env` file in development, and the host's environment settings in production. They cover the app and JWT secrets, the database, Redis, Cloudinary, the email provider, OTP timing and client rules. Never commit real values.
+All settings come from environment variables: a local `.env` file in development, and the host's environment settings in production. They cover the app and JWT secrets, the database, Redis, Cloudinary and email providers.
 
 Production refuses to start when a required setting is missing or a development provider is configured.
 
@@ -245,7 +248,7 @@ Errors share one shape:
 }
 ```
 
-`fields` appears only for validation errors. Common codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `TOKEN_EXPIRED`, `FORBIDDEN`, `ACCOUNT_BLOCKED`, `ACCOUNT_NOT_APPROVED`, `EMAIL_NOT_VERIFIED`, `NOT_FOUND`, `CONFLICT`, `OUT_OF_STOCK`, `PRESCRIPTION_REQUIRED`, `RATE_LIMITED`, `UPGRADE_REQUIRED`.
+`fields` appears only for validation errors. Common codes: `VALIDATION_ERROR`, `UNAUTHORIZED`, `TOKEN_EXPIRED`, `FORBIDDEN`, `ACCOUNT_BLOCKED`, `ACCOUNT_NOT_APPROVED`, `EMAIL_NOT_VERIFIED`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `INTERNAL_ERROR`.
 
 ---
 
@@ -261,3 +264,9 @@ Errors share one shape:
 Issues and pull requests are welcome. Please run `pytest` before opening a pull request.
 
 For questions, open an [issue](https://github.com/It-Saurabh001/Medi_Manage_Api/issues).
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
