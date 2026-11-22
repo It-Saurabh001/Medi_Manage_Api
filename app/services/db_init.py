@@ -181,10 +181,14 @@ ADD_COLUMNS = {
         ("is_approved", "INTEGER DEFAULT 1"),
         ("is_owner", "INTEGER DEFAULT 0"),
         ("is_email_verified", "INTEGER DEFAULT 1"),
+        ("google_sub", "TEXT DEFAULT NULL"),
+        ("auth_provider", "TEXT DEFAULT 'password'"),
     ],
     "Users": [
         ("image_url", "VARCHAR(1000) DEFAULT NULL"),
         ("is_email_verified", "INTEGER DEFAULT 1"),
+        ("google_sub", "TEXT DEFAULT NULL"),
+        ("auth_provider", "TEXT DEFAULT 'password'"),
     ],
     "Products": [
         ("image_url", "VARCHAR(1000) DEFAULT NULL"),
@@ -248,6 +252,9 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_idempotency_created ON Idempotency_Keys(created_at)",
     # At most one owner admin (backs up the locked first-signup check).
     "CREATE UNIQUE INDEX IF NOT EXISTS ux_admin_owner ON Admin(is_owner) WHERE is_owner = 1",
+    # One account per Google identity; NULL (password-only accounts) is unrestricted.
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_admin_google_sub ON Admin(google_sub) WHERE google_sub IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_google_sub ON Users(google_sub) WHERE google_sub IS NOT NULL",
 ]
 
 LEGACY_BATCH_EXPIRY = "9999-12-31"

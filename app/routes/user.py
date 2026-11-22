@@ -118,6 +118,7 @@ def update_me():
         row = acc.fetch_user(conn, identity)
     finally:
         conn.close()
+    auth.reject_google_email_change(v, row)
     acc.require_current_password(v, payload, row, auth.verify_password)
     cleaned = v.validate()
     cleaned.pop("current_password", None)
@@ -157,6 +158,14 @@ def update_user(user_id):
     v = acc.profile_validator(payload)
     acc.reject_fields(v, acc.PROTECTED_USER_FIELDS + ("password", "image_url"),
                       "use the approve/block/unblock actions or the password-reset flow")
+    if v.cleaned.get("email"):
+        conn = get_db()
+        try:
+            target = auth.fetch_account(conn, "user", user_id)
+        finally:
+            conn.close()
+        if target is not None:
+            auth.reject_google_email_change(v, target)
     cleaned = v.validate()
     has_image = bool(request.files.get("image") and request.files["image"].filename)
     if not cleaned and not has_image:

@@ -13,6 +13,8 @@ ERROR_CODES = {
     "FORBIDDEN": "Role not allowed; hide the action.",
     "ACCOUNT_BLOCKED": "Show 'account blocked, contact the pharmacy'; log out.",
     "ACCOUNT_NOT_APPROVED": "Show 'awaiting approval'; allow retry later.",
+    "ADMIN_ACCOUNT_NOT_REGISTERED": "Google sign-in: no admin account for this Google email; register first.",
+    "GOOGLE_ACCOUNT_MISMATCH": "Account is linked to another Google account; sign in with that one or a password.",
     "OUT_OF_STOCK": "Show available quantity from `fields.quantity`; let user reduce quantity.",
     "PRESCRIPTION_REQUIRED": "Ask for prescription upload and doctor name.",
     "PRESCRIPTION_NOT_VERIFIED": "Admin: verify the prescription before selling.",

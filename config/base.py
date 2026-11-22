@@ -40,6 +40,11 @@ class BaseConfig:
     EMAIL_API_PROVIDER = (os.getenv("EMAIL_API_PROVIDER") or "brevo").strip().lower()
     EMAIL_API_KEY = (os.getenv("EMAIL_API_KEY") or "").strip() or None
 
+    # --- Google Sign-In (POST /auth/google); Web OAuth client ID used as the ID-token audience ---
+    GOOGLE_CLIENT_ID = (os.getenv("GOOGLE_CLIENT_ID") or "").strip()
+    GOOGLE_LOGIN_RATE_LIMIT = _env_int("GOOGLE_LOGIN_RATE_LIMIT", 30)
+    GOOGLE_LOGIN_RATE_WINDOW_SECONDS = _env_int("GOOGLE_LOGIN_RATE_WINDOW_SECONDS", 600)
+
     # --- API / client contract ---
     API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
     ENABLE_DOCS = _env_bool("ENABLE_DOCS", False)

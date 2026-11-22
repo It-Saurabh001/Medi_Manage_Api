@@ -30,6 +30,9 @@ SCHEMAS = {
         "token_type": {"type": "string", "enum": ["Bearer"]}, "expires_in": {"type": "integer"},
         "role": {"type": "string", "enum": ["user", "admin"]}, "account_type": ACCOUNT_TYPE,
         "account_id": {"type": "string"}}},
+    "GoogleLoginInput": {"type": "object", "required": ["id_token"], "properties": {
+        "id_token": {"type": "string", "maxLength": 4096, "description": "Google ID token from Credential Manager"},
+        "account_type": ACCOUNT_TYPE}},
     "LogoutInput": {"type": "object", "properties": {
         "refresh_token": {"type": "string", "description": "optional; also revokes this refresh token"}}},
     "ResetRequestInput": {"type": "object", "required": ["email"], "properties": {
@@ -56,6 +59,19 @@ PATHS = {
         body=ref("VerifyOtpInput"), body_example={"account_id": "UID_06ade2a9b763", "otp": "672170", "account_type": "user"},
         multipart=True, public=True,
         notes="Max 5 attempts per OTP, then it is invalidated (429 RATE_LIMITED). A reset OTP cannot be used here.")},
+    "/auth/google": {"post": operation(
+        TAG, "Sign in with a Google ID token (user: tokens, no OTP; admin: existing accounts only, then login OTP)",
+        [], 200, envelope({"oneOf": [ref("Tokens"), ref("LoginChallenge")]}),
+        {"status": 200, "message": "Login successful", "data": TOKENS_EXAMPLE},
+        [error(400, "VALIDATION_ERROR", "Validation failed", {"id_token": "is required"}),
+         error(401, "UNAUTHORIZED", "Invalid Google sign-in token"), BLOCKED, NOT_APPROVED,
+         error(403, "ADMIN_ACCOUNT_NOT_REGISTERED", "No admin account is registered for this Google account"),
+         error(409, "GOOGLE_ACCOUNT_MISMATCH", "This account is linked to a different Google account"),
+         error(429, "RATE_LIMITED", "Too many attempts; try again later")],
+        body=ref("GoogleLoginInput"), body_example={"id_token": "<google-id-token>", "account_type": "user"},
+        public=True,
+        notes="Unknown user emails get a new unapproved account (403 ACCOUNT_NOT_APPROVED until approved). "
+              "An existing account with the same verified email is linked. Admins are never created here.")},
     "/auth/refresh": {"post": operation(
         TAG, "Rotate tokens using the refresh token (Authorization: Bearer <refresh_token>)", ["admin", "user"], 200,
         envelope(ref("Tokens")), {"status": 200, "message": "Token refreshed", "data": TOKENS_EXAMPLE},

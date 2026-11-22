@@ -176,6 +176,7 @@ def update_admin(admin_id):
         row = acc.fetch_admin(conn, admin_id)
     finally:
         conn.close()
+    auth.reject_google_email_change(v, row)
     if is_self:
         acc.require_current_password(v, payload, row, auth.verify_password)
     cleaned = v.validate()

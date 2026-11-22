@@ -15,6 +15,7 @@ from app.services.audit_service import write_audit
 from app.services.token_blocklist import revoke_token
 from app.utils.api_blueprint import ApiBlueprint
 from app.utils.decorators import role_required
+from app.utils.rate_limit import enforce_rate_limit
 from app.utils.responses import api_response
 from app.utils.validators import Validator, request_payload
 
@@ -45,6 +46,51 @@ def login():
     auth.ensure_email_verified(row)
     auth.ensure_account_active(account_type, row)
     account_id = auth.account_id_of(account_type, row)
+    if not auth.issue_otp("login", account_type, account_id, row["email"]):
+        raise ApiError("Could not send the verification code; try again", 502, "INTERNAL_ERROR")
+    return api_response({
+        "account_id": account_id,
+        "account_type": account_type,
+        "otp_required": True,
+        "otp_expires_in": auth.otp_ttl(),
+    }, "Verification code sent to your email")
+
+
+@auth_bp.post("/auth/google")
+def google_login():
+    """Google ID token -> user: tokens directly (no OTP); admin: existing accounts only, then the login OTP."""
+    cfg = current_app.config
+    enforce_rate_limit("google_login", cfg.get("GOOGLE_LOGIN_RATE_LIMIT", 30),
+                       cfg.get("GOOGLE_LOGIN_RATE_WINDOW_SECONDS", 600))
+    v = Validator(request_payload())
+    v.string("id_token", required=True, max_len=4096)
+    v.enum("account_type", auth.ACCOUNT_TYPES, default="user")
+    cleaned = v.validate()
+    account_type = cleaned["account_type"]
+    google = auth.verify_google_id_token(cleaned["id_token"])
+    # Link/sign-up is committed before the status checks so a new user exists for an admin to approve.
+    with db_connection(immediate=True) as conn:
+        row = auth.find_account_by_google_sub(conn, account_type, google["sub"])
+        if row is None:
+            row = auth.find_account_by_email(conn, account_type, google["email"])
+            if row is not None:
+                account_id = auth.account_id_of(account_type, row)
+                auth.link_google(conn, account_type, account_id, google["sub"])
+                write_audit(conn, account_id, account_type, "auth.google_linked", account_type, account_id, {})
+            elif account_type == "admin":
+                raise ApiError("No admin account is registered for this Google account", 403,
+                               "ADMIN_ACCOUNT_NOT_REGISTERED")
+            else:
+                account_id = acc.insert_google_user(conn, google["email"], google["name"], google["sub"])
+                write_audit(conn, account_id, "user", "user.signup", "user", account_id, {"provider": "google"})
+            row = auth.fetch_account(conn, account_type, account_id)
+    account_id = auth.account_id_of(account_type, row)
+    role = auth.ensure_account_active(account_type, row)
+    with db_connection() as conn:
+        write_audit(conn, account_id, role, "auth.google_login", account_type, account_id,
+                    {"otp_required": account_type == "admin"})
+    if account_type == "user":
+        return api_response(auth.issue_tokens(account_type, account_id, role), "Login successful")
     if not auth.issue_otp("login", account_type, account_id, row["email"]):
         raise ApiError("Could not send the verification code; try again", 502, "INTERNAL_ERROR")
     return api_response({

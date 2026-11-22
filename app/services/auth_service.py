@@ -7,6 +7,7 @@ OTPs are never returned in any response or logged.
 import hashlib
 import hmac
 import secrets
+import sqlite3
 
 from flask import current_app
 from flask_jwt_extended import create_access_token, create_refresh_token
@@ -16,6 +17,7 @@ from app.errors import ApiError, ValidationError
 from app.services.email_service import send_otp_email
 
 ACCOUNT_TYPES = ("user", "admin")
+GOOGLE_ISSUERS = ("accounts.google.com", "https://accounts.google.com")
 MAX_OTP_ATTEMPTS = 5
 PURPOSES = ("login", "reset", "verify")
 RESEND_COOLDOWN_SECONDS = 60
@@ -183,6 +185,59 @@ def mark_email_verified(conn, account_type, account_id):
 def ensure_email_verified(row):
     if "is_email_verified" in row.keys() and row["is_email_verified"] is not None             and not _truthy(row["is_email_verified"]):
         raise ApiError("Email is not verified. Enter the code sent to your email.", 403, "EMAIL_NOT_VERIFIED")
+
+
+# ------------------------------------------------------------------ Google Sign-In
+def verify_google_id_token(raw_token):
+    """Verified Google ID-token claims {sub, email, name}; any failure -> 401 (details never exposed)."""
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    client_id = current_app.config.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        current_app.logger.error("Google sign-in requested but GOOGLE_CLIENT_ID is not configured")
+        raise ApiError("Google sign-in is not available", 503, "INTERNAL_ERROR")
+    try:
+        claims = google_id_token.verify_oauth2_token(raw_token, google_requests.Request(), client_id)
+    except Exception as exc:
+        current_app.logger.warning("Google ID token rejected (%s)", type(exc).__name__)
+        raise ApiError("Invalid Google sign-in token", 401, "UNAUTHORIZED")
+    if claims.get("iss") not in GOOGLE_ISSUERS or not claims.get("sub") or not claims.get("email"):
+        raise ApiError("Invalid Google sign-in token", 401, "UNAUTHORIZED")
+    if claims.get("email_verified") is not True:
+        raise ApiError("Google account email is not verified", 401, "UNAUTHORIZED")
+    return {"sub": str(claims["sub"]), "email": str(claims["email"]).lower(), "name": claims.get("name") or ""}
+
+
+def find_account_by_google_sub(conn, account_type, sub):
+    table, _ = _TABLES[account_type]
+    return conn.execute(f"SELECT * FROM {table} WHERE google_sub = ?", (sub,)).fetchone()
+
+
+def link_google(conn, account_type, account_id, sub):
+    """Attach a Google identity to an account that has none yet. 409 GOOGLE_ACCOUNT_MISMATCH otherwise."""
+    table, id_col = _TABLES[account_type]
+    try:
+        cur = conn.execute(
+            f"""UPDATE {table} SET google_sub = ?,
+                   auth_provider = CASE WHEN COALESCE(password, '') = '' THEN 'google' ELSE 'password+google' END,
+                   is_email_verified = 1
+               WHERE {id_col} = ? AND google_sub IS NULL""", (sub, account_id))
+    except sqlite3.IntegrityError:
+        cur = None
+    if cur is None or cur.rowcount == 0:
+        raise ApiError("This account is linked to a different Google account", 409, "GOOGLE_ACCOUNT_MISMATCH")
+
+
+def google_linked(row):
+    return "google_sub" in row.keys() and bool(row["google_sub"])
+
+
+def reject_google_email_change(v, row):
+    """Validator rule: a Google-linked account keeps the email Google verified."""
+    new_email = v.cleaned.get("email")
+    if new_email and google_linked(row) and new_email.lower() != (row["email"] or "").lower():
+        v.error("email", "cannot be changed on a Google-linked account")
 
 
 # ------------------------------------------------------------------ tokens

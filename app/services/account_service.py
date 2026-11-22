@@ -97,6 +97,16 @@ def serialize_user(row):
         "is_deleted": role == "deleted",
         "image_url": row["image_url"] if "image_url" in keys else None,
         "created_at": to_iso_z(row["date_of_account_creation"]),
+        **_auth_fields(row),
+    }
+
+
+def _auth_fields(row):
+    keys = row.keys()
+    return {
+        "auth_provider": (row["auth_provider"] if "auth_provider" in keys else None) or "password",
+        "has_password": bool(row["password"]),
+        "google_linked": "google_sub" in keys and bool(row["google_sub"]),
     }
 
 
@@ -127,6 +137,21 @@ def insert_user(conn, cleaned):
                VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 'user', ?)""",
             (user_id, hash_password(cleaned["password"]), utc_now_iso(), cleaned["name"], cleaned.get("address"),
              cleaned.get("email"), cleaned.get("phone_number"), cleaned.get("pin_code"), cleaned.get("image_url")),
+        )
+    except sqlite3.IntegrityError:
+        raise ConflictError("Account already exists")
+    return user_id
+
+
+def insert_google_user(conn, email, name, google_sub):
+    """Google sign-up: no password (authenticate() then always fails), email verified, awaiting approval."""
+    user_id = "UID_" + uuid.uuid4().hex[:12]
+    try:
+        conn.execute(
+            """INSERT INTO Users(user_id, password, date_of_account_creation, isApproved, block, name, email,
+                   role, is_email_verified, google_sub, auth_provider)
+               VALUES (?, NULL, ?, 0, 0, ?, ?, 'user', 1, ?, 'google')""",
+            (user_id, utc_now_iso(), name or email.split("@")[0], email, google_sub),
         )
     except sqlite3.IntegrityError:
         raise ConflictError("Account already exists")
@@ -216,6 +241,7 @@ def serialize_admin(row):
         "is_owner": admin_is_owner(row),
         "image_url": row["image_url"] if "image_url" in keys else None,
         "created_at": to_iso_z(row["date_of_account_creation"]),
+        **_auth_fields(row),
     }
 
 
