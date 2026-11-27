@@ -90,6 +90,23 @@ PATHS = {
                   "POST /admins/{admin_id}/approve. Rate-limited per client IP (429 + Retry-After). "
                   "Writes an audit-log entry."),
     },
+    "/admins/register/google": {
+        "post": operation(
+            TAG, "Public admin signup with Google (same gates as /admins/register)", [], 201,
+            envelope(ref("Admin")),
+            {"status": 201, "message": "Admin registered. Awaiting approval.", "data": PENDING_EXAMPLE},
+            [error(400, "VALIDATION_ERROR", "Validation failed", {"id_token": "is required"}),
+             error(401, "UNAUTHORIZED", "Invalid Google sign-in token"),
+             error(403, "FORBIDDEN", "Invalid signup code"),
+             DUPLICATE,
+             error(429, "RATE_LIMITED", "Too many attempts; try again later")],
+            body={"type": "object", "required": ["id_token"],
+                  "properties": {"id_token": {"type": "string"}, "signup_code": {"type": "string"},
+                                 "phone_number": {"type": "string"}}},
+            body_example={"id_token": "<GOOGLE_ID_TOKEN>", "signup_code": "<ADMIN_SIGNUP_CODE>"},
+            public=True, location=True,
+            notes="Name and email come from the verified Google token. No verification email is needed."),
+    },
     "/admins/{admin_id}/approve": {
         "post": operation(
             TAG, "Approve a self-registered admin", ["admin"], 200, envelope(ref("Admin")),

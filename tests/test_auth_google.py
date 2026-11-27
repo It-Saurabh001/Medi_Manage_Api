@@ -168,7 +168,7 @@ def test_email_change_blocked_for_linked_account(client, api, google, admin_head
                        headers=headers)
     assert res.status_code == 400 and "email" in res.get_json()["fields"]
     by_admin = client.patch(f"{api}/users/{user_id}", json={"email": "new@example.com"}, headers=admin_headers)
-    assert by_admin.status_code == 400 and "email" in by_admin.get_json()["fields"]
+    assert by_admin.status_code == 403  # admins cannot edit customer details at all
     me = client.get(f"{api}/users/me", headers=headers).get_json()["data"]
     assert me["google_linked"] is True and me["has_password"] is True
 

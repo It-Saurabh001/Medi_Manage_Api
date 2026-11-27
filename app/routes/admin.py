@@ -8,7 +8,7 @@ import hmac
 from flask import current_app, request, url_for
 
 from app.db import db_connection, get_db
-from app.errors import ForbiddenError, NotFoundError, ValidationError
+from app.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.services import account_service as acc
 from app.services import auth_service as auth
 from app.services.audit_service import write_audit
@@ -163,6 +163,41 @@ def register_admin():
         raise
     data.update(otp_required=True, otp_expires_in=auth.otp_ttl("verify"))
     message = ("Admin registered." if is_first else "Admin registered. Awaiting approval.")         + " Verification code sent to your email."
+    return api_response(data, message, 201, headers={"Location": location})
+
+
+@admin_bp.post("/admins/register/google")
+def register_admin_google():
+    """Public admin signup with a Google ID token. Same gates as POST /admins/register (enabled flag,
+    rate limit, signup code, owner claim); new admins still need approval unless they are the first."""
+    cfg = current_app.config
+    if not cfg.get("ADMIN_SIGNUP_ENABLED", True):
+        raise NotFoundError("Resource not found")
+    enforce_rate_limit("admin_register", cfg.get("ADMIN_SIGNUP_RATE_LIMIT", 10),
+                       cfg.get("ADMIN_SIGNUP_RATE_WINDOW_SECONDS", 3600))
+    v = Validator(request_payload())
+    v.string("id_token", required=True, max_len=4096)
+    v.string("signup_code", max_len=200)
+    acc.add_contact_rules(v)
+    acc.reject_fields(v, acc.PROTECTED_ADMIN_FIELDS + ("email", "password", "name"), "cannot be set at signup")
+    cleaned = v.validate()
+    _check_signup_code(cleaned.get("signup_code"))
+    google = auth.verify_google_id_token(cleaned["id_token"])  # name and email come only from Google
+    with db_connection(immediate=True) as conn:
+        if auth.find_account_by_google_sub(conn, "admin", google["sub"]) is not None:
+            raise ConflictError("An admin account already exists for this Google account; sign in instead")
+        acc.ensure_admin_unique(conn, google["email"], cleaned.get("phone_number"))
+        is_first = not acc.has_live_admin(conn)
+        if is_first and _owner_claim_blocked():
+            raise ForbiddenError("The first (owner) admin must be created with BOOTSTRAP_ADMIN_EMAIL or a "
+                                 "signup code on this server")
+        admin_id = acc.insert_google_admin(conn, google["email"], google["name"], google["sub"],
+                                           cleaned.get("phone_number"), is_approved=is_first, is_owner=is_first)
+        write_audit(conn, admin_id, "admin", "admin.register", "admin", admin_id,
+                    {"provider": "google", "is_approved": is_first, "is_owner": is_first})
+        data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
+    location = url_for("admin.get_admin", admin_id=admin_id, _external=True)
+    message = "Admin registered." if is_first else "Admin registered. Awaiting approval."
     return api_response(data, message, 201, headers={"Location": location})
 
 

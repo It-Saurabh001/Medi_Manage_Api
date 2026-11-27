@@ -331,6 +331,19 @@ def insert_admin(conn, cleaned, is_approved=True, is_owner=False, password_hash=
     return admin_id
 
 
+def insert_google_admin(conn, email, name, google_sub, phone_number=None, is_approved=False, is_owner=False):
+    """Google admin signup: no password (password login always fails until one is set via reset),
+    email already verified by Google."""
+    admin_id = insert_admin(conn, {"email": email, "name": name or email.split("@")[0], "phone_number": phone_number},
+                            is_approved=is_approved, is_owner=is_owner, password_hash="!", email_verified=True)
+    try:
+        conn.execute("UPDATE Admin SET password = NULL, google_sub = ?, auth_provider = 'google' WHERE admin_id = ?",
+                     (google_sub, admin_id))
+    except sqlite3.IntegrityError:
+        raise ConflictError("Account already exists")
+    return admin_id
+
+
 def approve_admin(conn, admin_id):
     cur = conn.execute(
         "UPDATE Admin SET is_approved = 1 WHERE admin_id = ? AND COALESCE(role, 'admin') <> 'deleted'", (admin_id,))

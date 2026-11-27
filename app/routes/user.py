@@ -185,36 +185,12 @@ def get_user(user_id):
 @user_bp.patch("/users/<user_id>")
 @role_required(ADMIN)
 def update_user(user_id):
-    payload = request_payload()
-    v = acc.profile_validator(payload)
-    acc.reject_fields(v, acc.PROTECTED_USER_FIELDS + ("password", "image_url"),
-                      "use the approve/block/unblock actions or the password-reset flow")
-    conn = get_db()
-    try:
-        target = auth.fetch_account(conn, "user", user_id)
-    finally:
-        conn.close()
-    # The email is the account's recovery channel: an admin who could change it could then run a
-    # password reset to the new address and take the customer's account over. Re-sending the
-    # unchanged email (edit forms do) is still accepted.
-    new_email = v.cleaned.get("email")
-    if new_email and target is not None and new_email.lower() != (target["email"] or "").lower():
-        v.error("email", "only the account owner can change this")
-    cleaned = v.validate()
-    has_image = bool(request.files.get("image") and request.files["image"].filename)
-    if not cleaned and not has_image:
-        raise ValidationError("No updatable fields supplied")
-    identity, role = current_identity()
-    with db_connection(immediate=True) as conn:
-        acc.fetch_user(conn, user_id)
-        acc.ensure_user_unique(conn, cleaned.get("email"), cleaned.get("phone_number"), exclude_id=user_id)
-    if has_image:
-        cleaned["image_url"] = _image_url()
-    with db_connection(immediate=True) as conn:
-        acc.update_user(conn, user_id, cleaned)
-        write_audit(conn, identity, role, "user.update", "user", user_id, cleaned)
-        data = _user_json(conn, user_id)
-    return api_response(data, "User updated")
+    """Personal details belong to the customer: admins may approve, block or delete, never edit.
+
+    Kept as an explicit 403 (rather than removing the route) so older admin apps get a clear message.
+    """
+    raise ForbiddenError("Admins cannot change a customer's personal details; "
+                         "customers update their own profile")
 
 
 @user_bp.delete("/users/<user_id>")

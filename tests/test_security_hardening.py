@@ -222,13 +222,16 @@ def test_prescription_url_host_allowlist(app, env_order):
     assert ok.status_code == 201
 
 
-def test_admin_cannot_redirect_customer_email(client, api, admin_headers):
-    user_id = _approved_user(client, api, admin_headers, "owner-of-mail@example.com")
-    same = client.patch(f"{api}/users/{user_id}", json={"email": "owner-of-mail@example.com", "name": "Renamed"},
-                        headers=admin_headers)
-    assert same.status_code == 200
-    other = client.patch(f"{api}/users/{user_id}", json={"email": "attacker@example.com"}, headers=admin_headers)
-    assert other.status_code == 400 and "email" in other.get_json()["fields"]
+def test_admin_cannot_change_customer_personal_details(client, api, admin_headers):
+    user_id = _approved_user(client, api, admin_headers, "private@example.com")
+    for body in ({"name": "Renamed"}, {"email": "attacker@example.com"}, {"phone_number": "+919800000001"},
+                 {"address": "Elsewhere"}):
+        res = client.patch(f"{api}/users/{user_id}", json=body, headers=admin_headers)
+        assert res.status_code == 403 and res.get_json()["code"] == "FORBIDDEN", body
+    data = client.get(f"{api}/users/{user_id}", headers=admin_headers).get_json()["data"]
+    assert data["name"] == "Test User" and data["email"] == "private@example.com"
+    # Account actions remain available to admins
+    assert client.post(f"{api}/users/{user_id}/block", headers=admin_headers).status_code == 200
 
 
 def test_first_owner_cannot_be_claimed_in_production_without_code(app, client, api):
@@ -240,6 +243,32 @@ def test_first_owner_cannot_be_claimed_in_production_without_code(app, client, a
     ok = client.post(f"{api}/admins/register", json={"name": "Owner", "email": "own@example.com",
                                                       "password": PASSWORD, "signup_code": "a-long-signup-code"})
     assert ok.status_code == 201 and ok.get_json()["data"]["is_owner"] is True
+
+
+# ------------------------------------------------------------------ admin Google signup
+def test_admin_google_signup(app, client, api, monkeypatch, fake_email_sender):
+    who = {"sub": "g-admin-1", "email": "first@example.com", "name": "First Admin"}
+    monkeypatch.setattr(auth_service, "verify_google_id_token", lambda raw: dict(who))
+    url = f"{api}/admins/register/google"
+    app.config["ADMIN_SIGNUP_CODE"] = "a-long-signup-code"
+    assert client.post(url, json={"id_token": "t"}).status_code == 403  # code required
+    first = client.post(url, json={"id_token": "t", "signup_code": "a-long-signup-code"})
+    data = first.get_json()["data"]
+    assert first.status_code == 201 and data["is_owner"] and data["google_linked"] and not data["has_password"]
+    assert client.post(url, json={"id_token": "t", "signup_code": "a-long-signup-code"}).status_code == 409
+    assert client.post(url, json={"id_token": "t", "email": "x@y.com",
+                                  "signup_code": "a-long-signup-code"}).status_code == 400
+    # Google login now works (admins still get the OTP step)
+    login = client.post(f"{api}/auth/google", json={"id_token": "t", "account_type": "admin"})
+    assert login.status_code == 200 and login.get_json()["data"]["otp_required"] is True
+    # A later admin waits for approval
+    who.update(sub="g-admin-2", email="second@example.com")
+    second = client.post(url, json={"id_token": "t", "signup_code": "a-long-signup-code"})
+    assert second.get_json()["data"]["is_approved"] is False
+    pending = client.post(f"{api}/auth/google", json={"id_token": "t", "account_type": "admin"})
+    assert pending.status_code == 403 and pending.get_json()["code"] == "ACCOUNT_NOT_APPROVED"
+    app.config["ADMIN_SIGNUP_ENABLED"] = False
+    assert client.post(url, json={"id_token": "t"}).status_code == 404
 
 
 # ------------------------------------------------------------------ edge guard + headers

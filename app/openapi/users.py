@@ -96,7 +96,7 @@ PATHS = {
             {"status": 200, "message": "User fetched successfully", "data": USER_EXAMPLE},
             [UNAUTHORIZED, NOT_FOUND], params=[path_param("user_id")]),
         "patch": operation(
-            TAG, "Admin edits a user's profile fields", ["admin"], 200, envelope(ref("User")),
+            TAG, "Disabled: always 403, customers edit their own profile (PATCH /users/me)", ["admin"], 200, envelope(ref("User")),
             {"status": 200, "message": "User updated", "data": {**USER_EXAMPLE, "name": "Priya S"}},
             [error(400, "VALIDATION_ERROR", "Validation failed",
                    {"is_approved": "use the approve/block/unblock actions or the password-reset flow"})]

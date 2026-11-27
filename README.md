@@ -318,6 +318,7 @@ Built in, on by default:
 
 - **Auth abuse limits.** These cover login, OTP verify/resend and password reset. Each endpoint is limited per IP and per target account. Each account also has an OTP-attempt budget that a new code doesn't reset, and reset codes are re-sent at most once a minute (silently). Signup is limited per IP.
 - **Immediate session revocation.** Blocking, deleting or disabling an account, or resetting its password, invalidates all of its tokens at once. Clients get the codes they already handle: `ACCOUNT_BLOCKED`, `UNAUTHORIZED` or `TOKEN_INVALID`.
+- **Customer data ownership.** Admins can approve, block, unblock and delete customers, but cannot edit their personal details (`PATCH /users/{user_id}` returns `403`).
 - **Fail-closed configuration.** An unset `FLASK_ENV` means production. Production refuses to start with signing keys that are published in this repo. On an empty database, the owner can only be claimed with a signup code or `BOOTSTRAP_ADMIN_*`.
 - **Edge guard** ([app/edge_guard.py](app/edge_guard.py)). This is in-app filtering modelled on Cloudflare: IP allow/block lists, an origin lock, scanner User-Agents, probe paths (`/.env`, `/.git`, `wp-admin`, ...), SQLi/XSS/traversal/Log4Shell signatures in the URL and selected headers, a URL-length limit and a global per-IP rate limit. Blocks are logged as `security-event rule=...`.
 - **Security headers** on every response: `nosniff`, `X-Frame-Options`, CSP, `Referrer-Policy`, HSTS in production, and `Cache-Control: no-store` on API responses.
