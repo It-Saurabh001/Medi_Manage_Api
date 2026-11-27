@@ -12,10 +12,10 @@ from app.errors import ApiError, ValidationError
 from app.services import account_service as acc
 from app.services import auth_service as auth
 from app.services.audit_service import write_audit
-from app.services.token_blocklist import revoke_token
+from app.services.token_blocklist import revoke_account_tokens, revoke_token
 from app.utils.api_blueprint import ApiBlueprint
 from app.utils.decorators import role_required
-from app.utils.rate_limit import enforce_rate_limit
+from app.utils.rate_limit import enforce_auth_limits, enforce_rate_limit
 from app.utils.responses import api_response
 from app.utils.validators import Validator, request_payload
 
@@ -34,8 +34,10 @@ def _credentials_validator(payload):
 
 @auth_bp.post("/auth/login")
 def login():
+    enforce_auth_limits("login")
     cleaned = _credentials_validator(request_payload()).validate()
     account_type = cleaned["account_type"]
+    enforce_auth_limits("login", account_key=f"{account_type}:{cleaned['email']}")
     conn = get_db()
     try:
         row = auth.authenticate(conn, account_type, cleaned["email"], cleaned["password"])
@@ -75,8 +77,12 @@ def google_login():
             row = auth.find_account_by_email(conn, account_type, google["email"])
             if row is not None:
                 account_id = auth.account_id_of(account_type, row)
-                auth.link_google(conn, account_type, account_id, google["sub"])
-                write_audit(conn, account_id, account_type, "auth.google_linked", account_type, account_id, {})
+                unverified = not acc.email_is_verified(row)
+                auth.link_google(conn, account_type, account_id, google["sub"], drop_password=unverified)
+                write_audit(conn, account_id, account_type, "auth.google_linked", account_type, account_id,
+                            {"password_removed": unverified})
+                if unverified:
+                    revoke_account_tokens(account_type, account_id)
             elif account_type == "admin":
                 raise ApiError("No admin account is registered for this Google account", 403,
                                "ADMIN_ACCOUNT_NOT_REGISTERED")
@@ -114,6 +120,7 @@ def _verify_email_otp(payload):
     """Signup email verification: {email, otp, account_type} -> is_email_verified=1."""
     cleaned = _email_otp_validator(payload, with_otp=True)
     account_type = cleaned["account_type"]
+    enforce_auth_limits("verify_email", account_key=f"{account_type}:{cleaned['email']}")
     with db_connection() as conn:
         row = auth.find_account_by_email(conn, account_type, cleaned["email"])
     if row is None:
@@ -129,8 +136,10 @@ def _verify_email_otp(payload):
 
 @auth_bp.post("/auth/resend-otp")
 def resend_otp():
+    enforce_auth_limits("resend_otp")
     cleaned = _email_otp_validator(request_payload(), with_otp=False)
     account_type = cleaned["account_type"]
+    enforce_auth_limits("resend_otp", account_key=f"{account_type}:{cleaned['email']}")
     with db_connection() as conn:
         row = auth.find_account_by_email(conn, account_type, cleaned["email"])
     generic = "If this account exists and is not verified, a new code has been sent."
@@ -145,6 +154,7 @@ def resend_otp():
 
 @auth_bp.post("/auth/verify-otp")
 def verify_otp():
+    enforce_auth_limits("verify_otp")
     payload = request_payload()
     if "email" in payload and "account_id" not in payload:
         return _verify_email_otp(payload)
@@ -205,28 +215,38 @@ def logout():
 
 @auth_bp.post("/auth/password-reset/request")
 def password_reset_request():
+    enforce_auth_limits("reset_request")
     v = Validator(request_payload())
     v.string("email", required=True, max_len=200)
     v.enum("account_type", auth.ACCOUNT_TYPES, default="user")
     cleaned = v.validate()
+    account_type = cleaned["account_type"]
+    enforce_auth_limits("reset_request", account_key=f"{account_type}:{cleaned['email']}")
     conn = get_db()
     try:
-        row = auth.find_account_by_email(conn, cleaned["account_type"], cleaned["email"])
+        row = auth.find_account_by_email(conn, account_type, cleaned["email"])
     finally:
         conn.close()
     if row is None:
-        current_app.logger.warning("password-reset: no %s account found for requested email", cleaned["account_type"])
-    elif auth.resolve_role(cleaned["account_type"], row) is None:
-        current_app.logger.warning("password-reset: %s account is deleted/disabled", cleaned["account_type"])
+        current_app.logger.warning("password-reset: no %s account found for requested email", account_type)
+    elif auth.resolve_role(account_type, row) is None:
+        current_app.logger.warning("password-reset: %s account is deleted/disabled", account_type)
     else:
-        sent = auth.issue_otp("reset", cleaned["account_type"], auth.account_id_of(cleaned["account_type"], row), row["email"])
-        current_app.logger.warning("password-reset: account found, email handed to provider=%s", sent)
+        account_id = auth.account_id_of(account_type, row)
+        # Silent cooldown: a new code (which resets the 5-try counter) at most once per cooldown,
+        # and the response stays identical so it does not reveal that the account exists.
+        if auth.start_cooldown_if_idle("reset", account_type, account_id):
+            sent = auth.issue_otp("reset", account_type, account_id, row["email"])
+            current_app.logger.warning("password-reset: account found, email handed to provider=%s", sent)
+        else:
+            current_app.logger.warning("password-reset: cooldown active, no new code sent")
     # Identical response whether or not the account exists (no user enumeration).
     return api_response({"otp_expires_in": auth.otp_ttl()}, RESET_MESSAGE)
 
 
 @auth_bp.post("/auth/password-reset/confirm")
 def password_reset_confirm():
+    enforce_auth_limits("reset_confirm")
     payload = request_payload()
     v = Validator(payload)
     v.string("email", required=True, max_len=200)
@@ -235,6 +255,7 @@ def password_reset_confirm():
     acc.add_password_rule(v, "new_password", required=True)
     cleaned = v.validate()
     account_type = cleaned["account_type"]
+    enforce_auth_limits("reset_confirm", account_key=f"{account_type}:{cleaned['email']}")
     conn = get_db()
     try:
         row = auth.find_account_by_email(conn, account_type, cleaned["email"])
@@ -249,5 +270,8 @@ def password_reset_confirm():
             acc.update_admin(conn, account_id, {"password": cleaned["new_password"]})
         else:
             acc.update_user(conn, account_id, {"password": cleaned["new_password"]})
-        write_audit(conn, account_id, account_type, "auth.password_reset", account_type, account_id, {})
+        write_audit(conn, account_id, account_type, "auth.password_reset", account_type, account_id,
+                    {"sessions_revoked": True})
+    # Every existing session (incl. 30-day refresh tokens an attacker may hold) is invalid from now on.
+    revoke_account_tokens(account_type, account_id)
     return api_response(None, "Password has been reset. Please log in.")

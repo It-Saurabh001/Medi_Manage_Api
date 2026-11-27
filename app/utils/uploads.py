@@ -48,15 +48,52 @@ def validate_upload(file, field="image", allowed_mime=None, max_mb=None):
         raise _unsupported(field, "content does not match declared type")
 
 
-def upload_file(file, folder, field="image", allowed_mime=None):
-    """Validate then upload; returns the secure URL. Storage failures -> 502 INTERNAL_ERROR."""
+PRIVATE_PREFIX = "cldpriv:"
+
+
+def upload_file(file, folder, field="image", allowed_mime=None, private=False):
+    """Validate then upload. Storage failures -> 502 INTERNAL_ERROR.
+
+    Returns the public secure URL, or with private=True a `cldpriv:` reference to a private asset
+    (not reachable without a signed URL; see resolve_file_url).
+    """
     validate_upload(file, field=field, allowed_mime=allowed_mime)
+    options = {"folder": folder, "resource_type": "auto"}
+    if private:
+        options["type"] = "private"
     try:
-        result = cloudinary.uploader.upload(file, folder=folder, resource_type="auto")
+        result = cloudinary.uploader.upload(file, **options) or {}
     except Exception:
         current_app.logger.exception("File upload to storage failed")
         raise ApiError("File upload failed", 502, "INTERNAL_ERROR")
-    url = (result or {}).get("secure_url")
+    if private:
+        public_id = result.get("public_id")
+        if not public_id:
+            raise ApiError("File upload failed", 502, "INTERNAL_ERROR")
+        return f"{PRIVATE_PREFIX}{result.get('resource_type') or 'image'}:{result.get('format') or ''}:{public_id}"
+    url = result.get("secure_url")
     if not url:
         raise ApiError("File upload failed", 502, "INTERNAL_ERROR")
     return url
+
+
+def resolve_file_url(value):
+    """Stored file value -> URL for the client.
+
+    Public URLs (all existing data) are returned unchanged. Private references become a signed
+    download URL that expires after PRESCRIPTION_URL_TTL_SECONDS.
+    """
+    if not isinstance(value, str) or not value.startswith(PRIVATE_PREFIX):
+        return value
+    import time
+
+    import cloudinary.utils
+
+    try:
+        resource_type, fmt, public_id = value[len(PRIVATE_PREFIX):].split(":", 2)
+        ttl = int(current_app.config.get("PRESCRIPTION_URL_TTL_SECONDS", 900))
+        return cloudinary.utils.private_download_url(public_id, fmt, resource_type=resource_type, type="private",
+                                                     expires_at=int(time.time()) + ttl)
+    except Exception:
+        current_app.logger.exception("Could not sign a private file URL")
+        return None

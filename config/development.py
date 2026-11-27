@@ -2,6 +2,7 @@ import os
 from config.base import BaseConfig, _env_bool
 
 class DevelopmentConfig(BaseConfig):
+    FLASK_ENV = "development"
     DEBUG = True
     TESTING = False
     ENABLE_DOCS = _env_bool("ENABLE_DOCS", True)

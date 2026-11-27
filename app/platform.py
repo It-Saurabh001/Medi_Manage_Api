@@ -59,4 +59,8 @@ def init_platform(app):
         CORS(app, resources={r"/api/*": {"origins": origins}}, allow_headers=CORS_ALLOW_HEADERS,
              expose_headers=CORS_EXPOSE_HEADERS, supports_credentials=False, max_age=600)
 
+    # Edge guard first: blocked traffic never reaches auth, the version gate or the database.
+    from app.edge_guard import init_edge_guard
+    init_edge_guard(app)
+
     app.before_request(version_gate)

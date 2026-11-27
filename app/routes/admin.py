@@ -8,10 +8,11 @@ import hmac
 from flask import current_app, request, url_for
 
 from app.db import db_connection, get_db
-from app.errors import ForbiddenError, ValidationError
+from app.errors import ForbiddenError, NotFoundError, ValidationError
 from app.services import account_service as acc
 from app.services import auth_service as auth
 from app.services.audit_service import write_audit
+from app.services.token_blocklist import revoke_account_tokens
 from app.utils.api_blueprint import ApiBlueprint
 from app.utils.decorators import current_identity, role_required
 from app.utils.pagination import parse_pagination
@@ -30,6 +31,22 @@ def _image_url():
     if file is None or not file.filename:
         return None
     return upload_file(file, ADMIN_IMAGE_FOLDER, field="image", allowed_mime=IMAGE_MIME)
+
+
+def _require_owner(identity, action):
+    """With ADMIN_MANAGEMENT_OWNER_ONLY, managing other admins is reserved for the (active) owner.
+
+    Stops one compromised or rogue admin from minting further admin accounts or locking others out.
+    """
+    if not current_app.config.get("ADMIN_MANAGEMENT_OWNER_ONLY", True):
+        return
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM Admin WHERE admin_id = ?", (identity,)).fetchone()
+    finally:
+        conn.close()
+    if row is None or not acc.admin_is_owner(row) or auth.resolve_role("admin", row) != "admin":
+        raise ForbiddenError(f"Only the owner admin can {action}")
 
 
 @admin_bp.get("/admins")
@@ -61,6 +78,7 @@ def create_admin():
     acc.reject_fields(v, ("role", "admin_id", "image_url", "pin_code", "is_approved", "is_owner"), "cannot be set")
     cleaned = v.validate()
     identity, role = current_identity()
+    _require_owner(identity, "create admins")
     with db_connection(immediate=True) as conn:
         acc.ensure_admin_unique(conn, cleaned["email"], cleaned.get("phone_number"))
     image_url = _image_url()
@@ -76,6 +94,16 @@ def create_admin():
     return api_response(data, "Admin created", 201, headers={"Location": location})
 
 
+def _owner_claim_blocked():
+    """In production, an empty database must not hand ownership to whoever calls signup first.
+
+    Only applies to a brand-new install with no ADMIN_SIGNUP_CODE; existing deployments (which
+    already have an admin) and installs with a code behave exactly as before.
+    """
+    cfg = current_app.config
+    return cfg.get("FLASK_ENV") == "production" and not cfg.get("ADMIN_SIGNUP_CODE")
+
+
 def _check_signup_code(supplied):
     expected = current_app.config.get("ADMIN_SIGNUP_CODE") or ""
     if not expected:
@@ -88,6 +116,8 @@ def _check_signup_code(supplied):
 def register_admin():
     """Public admin signup. The first admin ever becomes the approved owner; later ones await approval."""
     cfg = current_app.config
+    if not cfg.get("ADMIN_SIGNUP_ENABLED", True):
+        raise NotFoundError("Resource not found")
     enforce_rate_limit("admin_register", cfg.get("ADMIN_SIGNUP_RATE_LIMIT", 10),
                        cfg.get("ADMIN_SIGNUP_RATE_WINDOW_SECONDS", 3600))
     v = Validator(request_payload())
@@ -109,6 +139,9 @@ def register_admin():
     with db_connection(immediate=True) as conn:
         acc.ensure_admin_unique(conn, cleaned["email"], cleaned.get("phone_number"))
         is_first = not acc.has_live_admin(conn)
+        if is_first and _owner_claim_blocked():
+            raise ForbiddenError("The first (owner) admin must be created with BOOTSTRAP_ADMIN_EMAIL or a "
+                                 "signup code on this server")
         admin_id = acc.insert_admin(conn, cleaned, is_approved=is_first, is_owner=is_first,
                                     password_hash=password_hash, email_verified=False)
         details = {k: val for k, val in cleaned.items() if k != "password"}
@@ -137,6 +170,7 @@ def register_admin():
 @role_required(ADMIN)
 def approve_admin(admin_id):
     identity, role = current_identity()
+    _require_owner(identity, "approve admins")
     with db_connection(immediate=True) as conn:
         acc.approve_admin(conn, admin_id)
         write_audit(conn, identity, role, "admin.approve", "admin", admin_id, {"is_approved": True})
@@ -171,6 +205,7 @@ def update_admin(admin_id):
     if not is_self:
         for field in ("email", "password"):
             v.reject(field, "only the account owner can change this")
+        _require_owner(identity, "change other admins")
     conn = get_db()
     try:
         row = acc.fetch_admin(conn, admin_id)
@@ -198,6 +233,8 @@ def update_admin(admin_id):
         write_audit(conn, identity, role, "admin.update", "admin", admin_id,
                     {k: v for k, v in cleaned.items() if k != "password"})
         data = acc.serialize_admin(acc.fetch_admin(conn, admin_id))
+    if cleaned.get("role") == "disabled":
+        revoke_account_tokens("admin", admin_id, reason="disabled")  # a disabled admin loses access now, not in an hour
     return api_response(data, "Admin updated")
 
 
@@ -205,10 +242,13 @@ def update_admin(admin_id):
 @role_required(ADMIN)
 def delete_admin(admin_id):
     identity, role = current_identity()
+    if identity != admin_id:
+        _require_owner(identity, "delete other admins")
     with db_connection(immediate=True) as conn:
         row = acc.fetch_admin(conn, admin_id)
         acc.ensure_admin_removable(conn, row)
         acc.update_admin(conn, admin_id, {"role": "deleted"})
         write_audit(conn, identity, role, "admin.delete", "admin", admin_id, {"soft_delete": True})
         data = acc.serialize_admin(acc.fetch_admin(conn, admin_id, include_deleted=True))
+    revoke_account_tokens("admin", admin_id, reason="deleted")
     return api_response(data, "Admin deleted")

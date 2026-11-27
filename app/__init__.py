@@ -41,6 +41,10 @@ def create_app(config_name=None):
     if is_prod and not app.config.get("ADMIN_SIGNUP_CODE"):
         app.logger.warning("ADMIN_SIGNUP_CODE is not set: anyone can request an admin account via "
                            "POST /admins/register (accounts still need approval). Set it in production.")
+    if is_prod:
+        from config.production import weak_secret_warnings
+        for message in weak_secret_warnings(app.config):
+            app.logger.warning("Security: %s", message)
 
     # Register centralized error handlers
     register_error_handlers(app)

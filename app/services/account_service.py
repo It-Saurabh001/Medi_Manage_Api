@@ -23,7 +23,8 @@ PIN_RE = re.compile(r"^[0-9]{4,10}$")
 USER_SORT = {"created_at": "date_of_account_creation", "name": "name COLLATE NOCASE"}
 ADMIN_SORT = {"created_at": "date_of_account_creation", "name": "name COLLATE NOCASE"}
 PROTECTED_USER_FIELDS = ("role", "is_approved", "isApproved", "is_blocked", "block", "user_id", "is_deleted",
-                         "date_of_account_creation", "created_at")
+                         "date_of_account_creation", "created_at", "is_email_verified", "google_sub",
+                         "auth_provider")
 ADMIN_ROLES = ("admin", "disabled")
 PROTECTED_ADMIN_FIELDS = ("role", "is_approved", "isApproved", "is_blocked", "block", "is_owner", "is_active",
                           "admin_id", "image_url", "pin_code", "is_deleted", "date_of_account_creation",
@@ -128,15 +129,17 @@ def ensure_user_unique(conn, email=None, phone=None, exclude_id=None):
             raise ConflictError("Phone number already registered", fields={"phone_number": "already registered"})
 
 
-def insert_user(conn, cleaned):
+def insert_user(conn, cleaned, email_verified=True, password_hash=None):
+    """email_verified=False: the customer must confirm the address (OTP) before they can log in."""
     user_id = "UID_" + uuid.uuid4().hex[:12]
     try:
         conn.execute(
             """INSERT INTO Users(user_id, password, date_of_account_creation, isApproved, block, name, address,
-                   email, phone_number, pin_code, role, image_url)
-               VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 'user', ?)""",
-            (user_id, hash_password(cleaned["password"]), utc_now_iso(), cleaned["name"], cleaned.get("address"),
-             cleaned.get("email"), cleaned.get("phone_number"), cleaned.get("pin_code"), cleaned.get("image_url")),
+                   email, phone_number, pin_code, role, image_url, is_email_verified)
+               VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, ?, 'user', ?, ?)""",
+            (user_id, password_hash or hash_password(cleaned["password"]), utc_now_iso(), cleaned["name"],
+             cleaned.get("address"), cleaned.get("email"), cleaned.get("phone_number"), cleaned.get("pin_code"),
+             cleaned.get("image_url"), 1 if email_verified else 0),
         )
     except sqlite3.IntegrityError:
         raise ConflictError("Account already exists")
@@ -158,7 +161,7 @@ def insert_google_user(conn, email, name, google_sub):
     return user_id
 
 
-USER_COLUMNS = ("name", "address", "phone_number", "pin_code", "email", "image_url")
+USER_COLUMNS = ("name", "address", "phone_number", "pin_code", "email", "image_url", "is_email_verified")
 
 
 def update_user(conn, user_id, cleaned):

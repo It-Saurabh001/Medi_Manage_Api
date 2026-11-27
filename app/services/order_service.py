@@ -9,6 +9,7 @@ from app.errors import ApiError, ConflictError, ForbiddenError, NotFoundError
 from app.services import stock_service
 from app.services.product_service import RX_SCHEDULES
 from app.utils.timeutil import to_iso_z, utc_now_iso
+from app.utils.uploads import resolve_file_url
 
 STATUSES = ("pending", "approved", "sold", "cancelled", "returned")
 # action -> (allowed from-statuses, resulting status)
@@ -144,7 +145,7 @@ def serialize_order(row):
         "status": order_status(row),
         "message": row["message"] or "",
         "requires_prescription": order_requires_prescription(row),
-        "prescription_url": _blank_to_none(row["prescription_url"]),
+        "prescription_url": resolve_file_url(_blank_to_none(row["prescription_url"])),
         "prescription_verified": _truthy(row["prescription_verified"]),
         "doctor_name": row["doctor_name"] or "",
         "patient_name": row["patient_name"] or "",

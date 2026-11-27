@@ -5,8 +5,9 @@ Replaces /user/createOrder, /admin/getAllOrders, /admin/user/getOrdersByUserId, 
 routes formerly in admin.py (/admin/recordSell, /admin/getSellHistory, ...).
 """
 import uuid
+from urllib.parse import urlsplit
 
-from flask import request, url_for
+from flask import current_app, request, url_for
 
 from app.db import db_connection, get_db
 from app.errors import NotFoundError, ValidationError
@@ -73,11 +74,20 @@ def _upload_prescription(field="prescription"):
     if file is None or not file.filename:
         return None
     # upload_file validates MIME allow-list, magic bytes and MAX_UPLOAD_MB; the client filename is never used.
-    return upload_file(file, PRESCRIPTION_FOLDER, field=field, allowed_mime=PRESCRIPTION_MIME)
+    return upload_file(file, PRESCRIPTION_FOLDER, field=field, allowed_mime=PRESCRIPTION_MIME,
+                       private=bool(current_app.config.get("PRESCRIPTION_PRIVATE_STORAGE")))
 
 
 def _https_url(value):
-    return isinstance(value, str) and value.lower().startswith(("https://", "http://")) and len(value) <= 1000
+    """Client-supplied prescription link: http(s) URL, optionally restricted to ALLOWED_PRESCRIPTION_URL_HOSTS."""
+    if not (isinstance(value, str) and value.lower().startswith(("https://", "http://")) and len(value) <= 1000):
+        return False
+    allowed = current_app.config.get("ALLOWED_PRESCRIPTION_URL_HOSTS") or ()
+    if not allowed:
+        return True  # legacy behaviour: any host
+    parts = urlsplit(value)
+    host = (parts.hostname or "").lower()
+    return parts.scheme.lower() == "https" and any(host == h or host.endswith("." + h) for h in allowed)
 
 
 # ------------------------------------------------------------------ orders: read

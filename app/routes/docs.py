@@ -13,7 +13,7 @@ _PAGE = """<!doctype html>
 <style>body{{margin:0;background:#fafafa}}</style></head>
 <body><div id="swagger-ui"></div>
 <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@{v}/swagger-ui-bundle.js"></script>
-<script>window.ui = SwaggerUIBundle({{url: "{spec}", dom_id: "#swagger-ui", persistAuthorization: true}});</script>
+<script>window.ui = SwaggerUIBundle({{url: "{spec}", dom_id: "#swagger-ui", persistAuthorization: false}});</script>
 </body></html>"""
 
 

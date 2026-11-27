@@ -100,6 +100,17 @@ def _register_jwt_loaders():
 
     @jwt.revoked_token_loader
     def _revoked_token(jwt_header, jwt_payload):
+        from flask import g
+
+        # Account-level revocations answer exactly like login/refresh would for that account state,
+        # so existing clients keep handling them with the codes they already know.
+        reason = getattr(g, "jwt_revoked_reason", None)
+        if reason == "blocked":
+            return error_response("Account is blocked", 403, "ACCOUNT_BLOCKED")
+        if reason == "disabled":
+            return error_response("Account is disabled", 403, "ACCOUNT_BLOCKED")
+        if reason == "deleted":
+            return error_response("Account no longer exists", 401, "UNAUTHORIZED")
         return error_response("Token has been revoked", 401, "TOKEN_INVALID")
 
     @jwt.needs_fresh_token_loader

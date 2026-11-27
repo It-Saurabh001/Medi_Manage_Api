@@ -1,7 +1,30 @@
 import os
 from config.base import BaseConfig, _env_bool
 
+MIN_SECRET_LENGTH = 32
+# Values published in this repository (.env.example, dev/test configs): never acceptable in production
+KNOWN_PUBLIC_SECRETS = {
+    "dev-fallback-secret-key-123", "dev-jwt-fallback-secret-key-456",
+    "test-secret-key-testing-only", "test-jwt-secret-key-testing-only",
+    "changeme", "secret", "your_secret_key",
+}
+
+
+def weak_secret_warnings(config):
+    """Non-fatal findings logged at startup (create_app)."""
+    warnings = []
+    for name in ("SECRET_KEY", "JWT_SECRET_KEY"):
+        value = config.get(name) or ""
+        if value and len(value) < MIN_SECRET_LENGTH:
+            warnings.append(f"{name} is shorter than {MIN_SECRET_LENGTH} characters; rotate it to a random value "
+                            "(rotating JWT_SECRET_KEY signs everyone out once)")
+    if config.get("SECRET_KEY") and config.get("SECRET_KEY") == config.get("JWT_SECRET_KEY"):
+        warnings.append("SECRET_KEY and JWT_SECRET_KEY are identical; use two different random values")
+    return warnings
+
+
 class ProductionConfig(BaseConfig):
+    FLASK_ENV = "production"
     DEBUG = False
     TESTING = False
     ENABLE_DOCS = _env_bool("ENABLE_DOCS", False)
@@ -60,6 +83,22 @@ class ProductionConfig(BaseConfig):
         for name, value in required_vars:
             if not value:
                 missing.append(name)
+
+        # Signing keys published in this repo (dev/test fallbacks) would let anyone forge admin tokens:
+        # refuse to start. Short-but-private keys only warn (see weak_secret_warnings) so an existing
+        # deployment keeps booting.
+        for name in ("SECRET_KEY", "JWT_SECRET_KEY"):
+            value = getattr(cls, name)
+            if value and value in KNOWN_PUBLIC_SECRETS:
+                missing.append(f"{name} (uses a value published in this repository; generate one with "
+                               "python -c \"import secrets; print(secrets.token_urlsafe(48))\")")
+
+        # The client-IP header can be forged unless the origin only accepts traffic from the edge
+        cls.CLIENT_IP_HEADER = (os.getenv("CLIENT_IP_HEADER") or cls.CLIENT_IP_HEADER or "").strip()
+        cls.ORIGIN_AUTH_SECRET = (os.getenv("ORIGIN_AUTH_SECRET") or cls.ORIGIN_AUTH_SECRET or "").strip()
+        if cls.CLIENT_IP_HEADER and len(cls.ORIGIN_AUTH_SECRET) < MIN_SECRET_LENGTH:
+            missing.append(f"ORIGIN_AUTH_SECRET (at least {MIN_SECRET_LENGTH} characters when CLIENT_IP_HEADER "
+                           "is set, otherwise clients can spoof their IP)")
 
         # Check for dev provider override attempts
         env_email_provider = os.getenv("EMAIL_PROVIDER", "prod")

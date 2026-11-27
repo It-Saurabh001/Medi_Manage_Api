@@ -8,13 +8,15 @@ import hashlib
 import hmac
 import secrets
 import sqlite3
+import time
 
 from flask import current_app
 from flask_jwt_extended import create_access_token, create_refresh_token
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.errors import ApiError, ValidationError
 from app.services.email_service import send_otp_email
+from app.utils.rate_limit import hit_limit
 
 ACCOUNT_TYPES = ("user", "admin")
 GOOGLE_ISSUERS = ("accounts.google.com", "https://accounts.google.com")
@@ -80,10 +82,22 @@ def ensure_account_active(account_type, row):
     return role
 
 
+_DUMMY_HASH = None
+
+
+def _burn_password_check(password):
+    """Spend the same hashing time as a real check so response timing does not reveal unknown emails."""
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = generate_password_hash(secrets.token_urlsafe(16))
+    check_password_hash(_DUMMY_HASH, password or "")
+
+
 def authenticate(conn, account_type, email, password):
-    """Row on valid credentials, else None (same answer for unknown email and bad password)."""
+    """Row on valid credentials, else None (same answer and similar timing for unknown email / bad password)."""
     row = find_account_by_email(conn, account_type, email)
     if row is None or not row["password"]:
+        _burn_password_check(password)
         return None
     try:
         ok = check_password_hash(row["password"], password)
@@ -144,6 +158,15 @@ def check_otp(purpose, account_type, account_id, candidate):
     if not store.exists(key):
         raise ValidationError("Verification code expired or not requested",
                               fields={"otp": "request a new code"})
+    # Account-wide budget that survives re-issuing the code. Without it, "request a new code, try 5"
+    # can be repeated forever, which brute-forces a 6-digit OTP.
+    cfg = current_app.config
+    within_budget, retry_after = hit_limit("otp_budget", cfg.get("OTP_VERIFY_BUDGET", 10),
+                                           cfg.get("OTP_VERIFY_BUDGET_WINDOW_SECONDS", 3600), key=key)
+    if not within_budget:
+        store.invalidate(key)
+        raise ApiError("Too many verification attempts; try again later", 429, "RATE_LIMITED",
+                       headers={"Retry-After": str(retry_after)})
     attempts = store.increment_attempts(key, ttl_seconds=otp_ttl(purpose))
     if attempts > MAX_OTP_ATTEMPTS:
         store.invalidate(key)
@@ -164,6 +187,18 @@ def enforce_resend_cooldown(purpose, account_type, account_id):
         raise ApiError(f"Please wait {RESEND_COOLDOWN_SECONDS} seconds before requesting a new code", 429,
                        "RATE_LIMITED", headers={"Retry-After": str(RESEND_COOLDOWN_SECONDS)})
     _store().set(key, "1", ttl_seconds=RESEND_COOLDOWN_SECONDS)
+
+
+def start_cooldown_if_idle(purpose, account_type, account_id):
+    """Silent cooldown: True (and a new cooldown starts) if no code was sent recently, else False.
+
+    For endpoints that must answer identically whether or not the account exists (password reset).
+    """
+    key = "cooldown:" + otp_key(purpose, account_type, account_id)
+    if _store().exists(key):
+        return False
+    _store().set(key, "1", ttl_seconds=RESEND_COOLDOWN_SECONDS)
+    return True
 
 
 def clear_resend_cooldown(purpose, account_type, account_id):
@@ -214,15 +249,23 @@ def find_account_by_google_sub(conn, account_type, sub):
     return conn.execute(f"SELECT * FROM {table} WHERE google_sub = ?", (sub,)).fetchone()
 
 
-def link_google(conn, account_type, account_id, sub):
-    """Attach a Google identity to an account that has none yet. 409 GOOGLE_ACCOUNT_MISMATCH otherwise."""
+def link_google(conn, account_type, account_id, sub, drop_password=False):
+    """Attach a Google identity to an account that has none yet. 409 GOOGLE_ACCOUNT_MISMATCH otherwise.
+
+    drop_password=True (account email was never verified): the password was set by whoever registered
+    the address, who has not proven they own it. Google just proved the caller does, so that password
+    is removed to stop a pre-registered ("pre-hijacked") account from being shared with an attacker.
+    """
     table, id_col = _TABLES[account_type]
+    drop = 1 if drop_password else 0
     try:
         cur = conn.execute(
             f"""UPDATE {table} SET google_sub = ?,
-                   auth_provider = CASE WHEN COALESCE(password, '') = '' THEN 'google' ELSE 'password+google' END,
+                   password = CASE WHEN ? = 1 THEN NULL ELSE password END,
+                   auth_provider = CASE WHEN ? = 1 OR COALESCE(password, '') = '' THEN 'google'
+                                        ELSE 'password+google' END,
                    is_email_verified = 1
-               WHERE {id_col} = ? AND google_sub IS NULL""", (sub, account_id))
+               WHERE {id_col} = ? AND google_sub IS NULL""", (sub, drop, drop, account_id))
     except sqlite3.IntegrityError:
         cur = None
     if cur is None or cur.rowcount == 0:
@@ -242,7 +285,8 @@ def reject_google_email_change(v, row):
 
 # ------------------------------------------------------------------ tokens
 def issue_tokens(account_type, account_id, role):
-    claims = {"role": role, "account_type": account_type}
+    # `ts`: sub-second issue time, compared against account-wide revocation (token_blocklist)
+    claims = {"role": role, "account_type": account_type, "ts": time.time()}
     expires = current_app.config.get("JWT_ACCESS_TOKEN_EXPIRES")
     return {
         "access_token": create_access_token(identity=account_id, additional_claims=claims),

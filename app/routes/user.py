@@ -4,16 +4,18 @@ Replaces /user/create, /admin/getAllUsers, /admin/user/getSpecificUser, /admin/u
 /admin/approveUser and /admin/deleteUser (hard delete -> soft delete). `/` and `/dox` were removed
 from this blueprint (`/dox` now redirects to /api/docs, see app/routes/docs.py).
 """
-from flask import request, url_for
+from flask import current_app, request, url_for
 
 from app.db import db_connection, get_db
 from app.errors import ForbiddenError, ValidationError
 from app.services import account_service as acc
 from app.services import auth_service as auth
 from app.services.audit_service import write_audit
+from app.services.token_blocklist import revoke_account_tokens
 from app.utils.api_blueprint import ApiBlueprint
 from app.utils.decorators import current_identity, role_required
 from app.utils.pagination import parse_pagination
+from app.utils.rate_limit import enforce_rate_limit
 from app.utils.responses import api_response, paginated_response
 from app.utils.uploads import IMAGE_MIME, upload_file
 from app.utils.validators import Validator, request_payload
@@ -38,6 +40,9 @@ def _user_json(conn, user_id, include_deleted=False):
 # ------------------------------------------------------------------ signup (public)
 @user_bp.post("/users")
 def create_user():
+    cfg = current_app.config
+    # Public endpoint that hashes a password and may upload a file: throttle per client IP.
+    enforce_rate_limit("user_signup", cfg.get("SIGNUP_RATE_LIMIT", 10), cfg.get("SIGNUP_RATE_WINDOW_SECONDS", 3600))
     payload = request_payload()
     v = Validator(payload)
     v.string("name", required=True, min_len=1, max_len=200)
@@ -46,21 +51,38 @@ def create_user():
     acc.add_password_rule(v, required=True)
     acc.reject_fields(v, acc.PROTECTED_USER_FIELDS + ("image_url",), "cannot be set at signup")
     cleaned = v.validate()
+    verify_email = bool(cfg.get("REQUIRE_USER_EMAIL_VERIFICATION", True))
     # Role is always 'user'; any `Admin:` header is ignored (audit finding C-01).
     with db_connection(immediate=True) as conn:
         acc.ensure_user_unique(conn, cleaned.get("email"), cleaned.get("phone_number"))
     image_url = _image_url()
     if image_url:
         cleaned["image_url"] = image_url
+    password_hash = acc.hash_password(cleaned["password"])  # slow; keep it outside the write lock
     with db_connection(immediate=True) as conn:
         acc.ensure_user_unique(conn, cleaned.get("email"), cleaned.get("phone_number"))
-        user_id = acc.insert_user(conn, cleaned)
+        user_id = acc.insert_user(conn, cleaned, email_verified=not verify_email, password_hash=password_hash)
         write_audit(conn, user_id, "user", "user.signup", "user", user_id,
                     {k: v for k, v in cleaned.items() if k != "password"})
         data = _user_json(conn, user_id)
     location = url_for("user.get_user", user_id=user_id, _external=True)
-    return api_response(data, "Account created. An admin must approve it before you can log in.", 201,
-                        headers={"Location": location})
+    message = "Account created. An admin must approve it before you can log in."
+    if verify_email:
+        # Proves the signer-up owns the address (no squatting someone else's email).
+        auth.enforce_resend_cooldown("verify", "user", user_id)
+        try:
+            auth.send_verification_otp("user", user_id, cleaned["email"])  # 502 EMAIL_DELIVERY_FAILED
+        except Exception:
+            current_app.logger.exception("User signup: verification email failed; removing user %s", user_id)
+            with db_connection(immediate=True) as conn:
+                conn.execute("DELETE FROM Users WHERE user_id = ? AND COALESCE(is_email_verified, 0) = 0", (user_id,))
+                write_audit(conn, user_id, "user", "user.signup_rollback", "user", user_id,
+                            {"reason": "email_delivery_failed"})
+            auth.clear_resend_cooldown("verify", "user", user_id)
+            raise
+        data.update(otp_required=True, otp_expires_in=auth.otp_ttl("verify"))
+        message += " Verification code sent to your email."
+    return api_response(data, message, 201, headers={"Location": location})
 
 
 # ------------------------------------------------------------------ admin listing
@@ -129,11 +151,20 @@ def update_me():
         acc.ensure_user_unique(conn, cleaned.get("email"), cleaned.get("phone_number"), exclude_id=identity)
     if has_image:
         cleaned["image_url"] = _image_url()
+    email_changed = bool(cleaned.get("email")) and cleaned["email"].lower() != (row["email"] or "").lower()
+    reverify = email_changed and bool(current_app.config.get("REQUIRE_USER_EMAIL_VERIFICATION", True))
+    if reverify:
+        cleaned["is_email_verified"] = 0  # the new address must be confirmed before the next login
     with db_connection(immediate=True) as conn:
         acc.update_user(conn, identity, cleaned)
         write_audit(conn, identity, "user", "user.update_self", "user", identity, {"fields": sorted(cleaned)})
         data = _user_json(conn, identity)
-    return api_response(data, "Profile updated")
+    message = "Profile updated"
+    if reverify:
+        auth.issue_otp("verify", "user", identity, cleaned["email"])
+        data["email_verification_required"] = True
+        message += ". Verify your new email address before the next login"
+    return api_response(data, message)
 
 
 # ------------------------------------------------------------------ by id
@@ -158,14 +189,17 @@ def update_user(user_id):
     v = acc.profile_validator(payload)
     acc.reject_fields(v, acc.PROTECTED_USER_FIELDS + ("password", "image_url"),
                       "use the approve/block/unblock actions or the password-reset flow")
-    if v.cleaned.get("email"):
-        conn = get_db()
-        try:
-            target = auth.fetch_account(conn, "user", user_id)
-        finally:
-            conn.close()
-        if target is not None:
-            auth.reject_google_email_change(v, target)
+    conn = get_db()
+    try:
+        target = auth.fetch_account(conn, "user", user_id)
+    finally:
+        conn.close()
+    # The email is the account's recovery channel: an admin who could change it could then run a
+    # password reset to the new address and take the customer's account over. Re-sending the
+    # unchanged email (edit forms do) is still accepted.
+    new_email = v.cleaned.get("email")
+    if new_email and target is not None and new_email.lower() != (target["email"] or "").lower():
+        v.error("email", "only the account owner can change this")
     cleaned = v.validate()
     has_image = bool(request.files.get("image") and request.files["image"].filename)
     if not cleaned and not has_image:
@@ -191,15 +225,18 @@ def delete_user(user_id):
         acc.set_user_flags(conn, user_id, role="deleted", block=1)
         write_audit(conn, identity, role, "user.delete", "user", user_id, {"soft_delete": True})
         data = _user_json(conn, user_id, include_deleted=True)
+    revoke_account_tokens("user", user_id, reason="deleted")  # effective immediately, not at token expiry
     return api_response(data, "User deleted")
 
 
-def _flag_action(user_id, action, message, **flags):
+def _flag_action(user_id, action, message, revoke_reason=None, **flags):
     identity, role = current_identity()
     with db_connection(immediate=True) as conn:
         acc.set_user_flags(conn, user_id, **flags)
         write_audit(conn, identity, role, f"user.{action}", "user", user_id, flags)
         data = _user_json(conn, user_id)
+    if revoke_reason:
+        revoke_account_tokens("user", user_id, reason=revoke_reason)
     return api_response(data, message)
 
 
@@ -212,10 +249,10 @@ def approve_user(user_id):
 @user_bp.post("/users/<user_id>/block")
 @role_required(ADMIN)
 def block_user(user_id):
-    return _flag_action(user_id, "block", "User blocked", block=1)
+    return _flag_action(user_id, "block", "User blocked", revoke_reason="blocked", block=1)
 
 
 @user_bp.post("/users/<user_id>/unblock")
 @role_required(ADMIN)
 def unblock_user(user_id):
-    return _flag_action(user_id, "unblock", "User unblocked", block=0)
+    return _flag_action(user_id, "unblock", "User unblocked", revoke_reason="credentials", block=0)

@@ -3,8 +3,12 @@ services:
     image: redis:7-alpine
     container_name: medi_manage_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No `ports:` mapping on purpose: Redis is reachable only by the web container on the internal
+    # compose network, never from the host or the internet. It also requires a password.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?Set REDIS_PASSWORD (see .env.production.example)}",
+              "--appendonly", "yes", "--protected-mode", "yes"]
+    environment:
+      REDISCLI_AUTH: "${REDIS_PASSWORD}"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -12,6 +16,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
 
   web:
     build:
@@ -21,11 +27,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    # REDIS_URL in .env.production must carry the password: redis://:<REDIS_PASSWORD>@redis:6379/0
     ports:
       - "5000:5000"
     depends_on:
       redis:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   redis_data:

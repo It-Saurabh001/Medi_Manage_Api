@@ -28,6 +28,10 @@ ERROR_CODES = {
     "UNSUPPORTED_MEDIA_TYPE": "Wrong file/content type; use an allowed type.",
     "METHOD_NOT_ALLOWED": "Client bug: wrong HTTP method.",
     "INTERNAL_ERROR": "Show a generic error and allow retry.",
+    # Edge guard (only malicious / malformed traffic should ever see these)
+    "REQUEST_BLOCKED": "Request blocked by the security filter; show a generic error.",
+    "ORIGIN_FORBIDDEN": "Origin locked behind the CDN; use the public API URL.",
+    "URI_TOO_LONG": "Client bug: URL too long.",
 }
 
 SUGGESTED_UNITS = ("strip", "bottle", "tube", "box", "vial", "sachet", "piece", "pack")

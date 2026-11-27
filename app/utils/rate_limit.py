@@ -55,12 +55,54 @@ def get_rate_limiter(config):
     return MemoryRateLimiter()
 
 
-def enforce_rate_limit(bucket, limit, window_seconds):
-    """Raise 429 RATE_LIMITED (with Retry-After) once `limit` hits per window are exceeded for this client."""
-    if not limit or limit <= 0:
-        return
+def client_ip():
+    """Best-known client IP.
+
+    CLIENT_IP_HEADER (e.g. CF-Connecting-IP) is honoured only when the edge guard's origin lock
+    (ORIGIN_AUTH_SECRET) is configured, so the header cannot be forged by clients hitting the origin
+    directly. Otherwise request.remote_addr, which honours ProxyFix (TRUSTED_PROXY_COUNT).
+    """
+    cfg = current_app.config
+    header = cfg.get("CLIENT_IP_HEADER")
+    if header and cfg.get("ORIGIN_AUTH_SECRET"):
+        value = (request.headers.get(header) or "").split(",")[0].strip()
+        if value:
+            return value
+    return request.remote_addr or "unknown"
+
+
+def _hash_identifier(value):
+    """Rate-limit keys for emails/ids are hashed so Redis never holds raw PII."""
+    import hashlib
+
+    return hashlib.sha256(str(value).strip().lower().encode("utf-8")).hexdigest()[:32]
+
+
+def hit_limit(bucket, limit, window_seconds, key=None):
+    """Count one hit. Returns (allowed, retry_after). `key` defaults to the client IP."""
+    if not limit or int(limit) <= 0:
+        return True, 0
     limiter = current_app.extensions["rate_limiter"]
-    allowed, retry_after = limiter.hit(f"{bucket}:{request.remote_addr or 'unknown'}", int(limit), int(window_seconds))
+    subject = client_ip() if key is None else _hash_identifier(key)
+    return limiter.hit(f"{bucket}:{subject}", int(limit), int(window_seconds))
+
+
+def enforce_rate_limit(bucket, limit, window_seconds, key=None):
+    """Raise 429 RATE_LIMITED (with Retry-After) once `limit` hits per window are exceeded.
+
+    The limit applies per client IP, or per `key` (e.g. the target email) when one is given.
+    """
+    allowed, retry_after = hit_limit(bucket, limit, window_seconds, key=key)
     if not allowed:
         raise ApiError("Too many attempts; try again later", 429, "RATE_LIMITED",
                        headers={"Retry-After": str(retry_after)})
+
+
+def enforce_auth_limits(bucket, account_key=None):
+    """Standard auth-endpoint protection: per-IP limit, plus a per-account limit when the target is known."""
+    cfg = current_app.config
+    enforce_rate_limit(f"auth_ip:{bucket}", cfg.get("AUTH_IP_RATE_LIMIT", 30),
+                       cfg.get("AUTH_IP_RATE_WINDOW_SECONDS", 600))
+    if account_key:
+        enforce_rate_limit(f"auth_acct:{bucket}", cfg.get("AUTH_ACCOUNT_RATE_LIMIT", 10),
+                           cfg.get("AUTH_ACCOUNT_RATE_WINDOW_SECONDS", 900), key=account_key)

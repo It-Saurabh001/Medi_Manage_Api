@@ -28,6 +28,7 @@ REST API for a medical shop (pharmacy). It powers two Android apps: **MediUserAp
 - [Configuration](#configuration)
 - [Database](#database)
 - [Deployment](#deployment)
+- [Security](#security)
 - [Testing](#testing)
 - [Error format](#error-format)
 - [Related projects](#related-projects)
@@ -266,6 +267,50 @@ Set the production settings in your host's environment (for example Render). For
 ```bash
 docker compose up --build
 ```
+
+Compose requires `REDIS_PASSWORD` (Redis is not published on the host) and `REDIS_URL=redis://:<REDIS_PASSWORD>@redis:6379/0` in `.env.production`.
+
+---
+
+## Security
+
+Built in, on by default:
+
+- **Auth abuse limits.** These cover login, OTP verify/resend and password reset. Each endpoint is limited per IP and per target account. Each account also has an OTP-attempt budget that a new code doesn't reset, and reset codes are re-sent at most once a minute (silently). Signup is limited per IP.
+- **Immediate session revocation.** Blocking, deleting or disabling an account, or resetting its password, invalidates all of its tokens at once. Clients get the codes they already handle: `ACCOUNT_BLOCKED`, `UNAUTHORIZED` or `TOKEN_INVALID`.
+- **Fail-closed configuration.** An unset `FLASK_ENV` means production. Production refuses to start with signing keys that are published in this repo. On an empty database, the owner can only be claimed with a signup code or `BOOTSTRAP_ADMIN_*`.
+- **Edge guard** ([app/edge_guard.py](app/edge_guard.py)). This is in-app filtering modelled on Cloudflare: IP allow/block lists, an origin lock, scanner User-Agents, probe paths (`/.env`, `/.git`, `wp-admin`, ...), SQLi/XSS/traversal/Log4Shell signatures in the URL and selected headers, a URL-length limit and a global per-IP rate limit. Blocks are logged as `security-event rule=...`.
+- **Security headers** on every response: `nosniff`, `X-Frame-Options`, CSP, `Referrer-Policy`, HSTS in production, and `Cache-Control: no-store` on API responses.
+
+Opt-in. These change client-visible behaviour, so enable each one once the app supports it:
+
+| Variable | Effect |
+|---|---|
+| `REQUIRE_USER_EMAIL_VERIFICATION=true` | Customers confirm their email (signup returns `otp_required`; verify with `POST /auth/verify-otp {email, otp, account_type:"user"}`) before logging in |
+| `ADMIN_MANAGEMENT_OWNER_ONLY=true` | Only the owner admin can create, approve, disable or delete other admins |
+| `PRESCRIPTION_PRIVATE_STORAGE=true` | Prescriptions become private Cloudinary assets; `prescription_url` is a signed URL that expires (do not cache it) |
+| `ALLOWED_PRESCRIPTION_URL_HOSTS=res.cloudinary.com` | Client-supplied `prescription_url` must be `https` on these hosts |
+| `BLOCK_EMPTY_USER_AGENT=true` | Rejects requests without a User-Agent |
+
+### Behind Cloudflare
+
+1. **Lock the origin.** Create a long random secret and set `ORIGIN_AUTH_SECRET` to it. In Cloudflare go to *Rules → Transform Rules → Modify Request Header* and *Set static* `X-Origin-Auth: <secret>` for the API hostname. Requests that bypass Cloudflare then get `403 ORIGIN_FORBIDDEN` (`/health` stays open for the host's health checks).
+2. **Real client IPs.** Set `CLIENT_IP_HEADER=CF-Connecting-IP`. It is only trusted when the origin lock is configured, so it can't be spoofed.
+3. **Dashboard rules** (an extra layer in front of the app's own checks):
+
+| Cloudflare feature | Setting / expression | Action |
+|---|---|---|
+| SSL/TLS | Full (strict), Always Use HTTPS, Min TLS 1.2, HSTS | n/a |
+| WAF Managed Rules | Cloudflare Managed Ruleset (+ OWASP Core Ruleset on paid plans) | Block |
+| WAF custom rule: probes | `http.request.uri.path matches "(?i)(/\\.(env\|git)\|wp-(admin\|login)\|phpmyadmin\|\\.php$)"` | Block |
+| WAF custom rule: methods | `not http.request.method in {"GET" "POST" "PATCH" "PUT" "DELETE" "OPTIONS" "HEAD"}` | Block |
+| WAF custom rule: scanners | `http.user_agent matches "(?i)(sqlmap\|nikto\|nmap\|masscan\|nuclei\|zgrab\|acunetix\|wpscan)"` | Block |
+| Rate limiting: auth | path starts with `/api/v1/auth/`: 20 requests / 1 min per IP | Block 10 min |
+| Rate limiting: signup | `/api/v1/users` or `/api/v1/admins/register`, method POST: 5 / 10 min per IP | Block 1 h |
+| Rate limiting: API | `/api/v1/`: 300 / 1 min per IP | Managed Challenge (web) / Block (API) |
+| Bot Fight Mode | On (skip it for `/api/v1/*` if it challenges the mobile app) | n/a |
+| Security Level | Medium; "I'm Under Attack" only during an incident | n/a |
+| Cache Rules | Bypass cache for `/api/*` | n/a |
 
 ---
 
