@@ -197,7 +197,7 @@ flowchart TB
 
 ## Getting started
 
-**Requirements:** Python 3.12 or newer and Git. Redis is only needed for the production setup.
+**Requirements:** Python 3.12 or newer and Git. Redis and Docker are not needed for local development.
 
 1. Clone and enter the project:
    ```bash
@@ -213,7 +213,12 @@ flowchart TB
    pip install -r requirements/dev.txt
    ```
 
-3. Create a `.env` file in the project root with your local settings (see [Configuration](#configuration)).
+3. Create your local settings file from the example, then fill in your own Cloudinary values:
+   ```bash
+   copy .env.example .env          # Windows
+   # cp .env.example .env          # macOS / Linux
+   ```
+   `.env` is ignored by Git. Keep real keys only there, never in `.env.example`.
 
 4. Start the local email debug server in a separate terminal. OTP emails are printed there instead of being sent:
    ```bash
@@ -224,7 +229,13 @@ flowchart TB
    ```bash
    devstart.bat
    ```
-   On macOS or Linux run `flask --app wsgi init-db` and then `flask --app wsgi run --debug`.
+   On macOS or Linux:
+   ```bash
+   export FLASK_ENV=development
+   flask --app wsgi init-db
+   flask --app wsgi run --debug
+   ```
+   Without `FLASK_ENV=development` the app starts in production mode and refuses to run until the production settings are present.
 
 ---
 
@@ -232,7 +243,19 @@ flowchart TB
 
 All settings come from environment variables: a local `.env` file in development, and the host's environment settings in production. They cover the app and JWT secrets, the database, Redis, Cloudinary and email providers.
 
-Production refuses to start when a required setting is missing or a development provider is configured.
+| File | Purpose | Commit it? |
+|---|---|---|
+| `.env.example` | Local development template | Yes (placeholders only) |
+| `.env.production.example` | Production template, names without values | Yes (no values) |
+| `.env`, `.env.production` | Your real settings | **Never** |
+
+Production refuses to start when a required setting is missing, a development provider is configured, or a signing key is one published in this repository.
+
+Generate each secret separately (`SECRET_KEY`, `JWT_SECRET_KEY`, `ORIGIN_AUTH_SECRET`, `REDIS_PASSWORD`, `ADMIN_SIGNUP_CODE`):
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+Use at least 32 characters, and a different value for every setting. Changing `JWT_SECRET_KEY` signs everyone out once.
 
 ---
 
@@ -262,13 +285,30 @@ The `Dockerfile` builds a production image (Python 3.12, non-root user, health c
 1. runs the database migration once, in its own process;
 2. starts Gunicorn (`WORKERS` and `BIND` can be set by environment).
 
-Set the production settings in your host's environment (for example Render). For a full local stack with Redis:
+Before deploying, set these in the host's environment settings (for example Render):
 
-```bash
-docker compose up --build
-```
+- `FLASK_ENV=production`
+- `SECRET_KEY` and `JWT_SECRET_KEY`: long random values, not the ones in `.env.example`
+- `ADMIN_SIGNUP_CODE`, or `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`, to create the first owner admin (remove the bootstrap variables afterwards)
+- The Redis, Cloudinary, email and database settings listed in `.env.production.example`
 
-Compose requires `REDIS_PASSWORD` (Redis is not published on the host) and `REDIS_URL=redis://:<REDIS_PASSWORD>@redis:6379/0` in `.env.production`.
+### Docker (optional)
+
+Docker packages the API with everything it needs, and Compose runs it together with Redis. It is useful on your own server or to test a production-like setup locally. It is not needed for local development or for a host that runs Python directly.
+
+1. Install Docker Desktop (or Docker Engine with Compose).
+2. Copy `.env.production.example` to `.env.production` and fill it in. Both Redis lines must carry the same password:
+   ```env
+   REDIS_PASSWORD=<your-random-password>
+   REDIS_URL=redis://:<your-random-password>@redis:6379/0
+   ```
+3. Start and stop the stack:
+   ```bash
+   docker compose --env-file .env.production up --build
+   docker compose --env-file .env.production down
+   ```
+
+`--env-file` is required so Compose can read `REDIS_PASSWORD`. Redis is reachable only by the API container. The API listens on `http://localhost:5000`.
 
 ---
 
